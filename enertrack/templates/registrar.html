@@ -1,0 +1,27 @@
+{% extends "layout.html" %}
+{% block body %}
+<div class="container">
+  <div class="row justify-content-center">
+    <div class="col-md-6">
+      <div class="card shadow-lg border-0 mt-5">
+        <div class="card-body p-4">
+          <h1 class="text-center mb-4 text-section">Registro</h1>
+          <form method="POST" action="{{url_for('registrar')}}">
+            <div class="mb-3">
+              <label for="usuario" class="form-label text-section">Usuario</label>
+              <input autofocus name="usuario" id="usuario" placeholder="Usuario" type="text" class="form-control" required>
+            </div>
+            <div class="mb-3">
+              <label for="password" class="form-label text-section">Contraseña</label>
+              <input name="password" id="password" placeholder="Contraseña" type="password" class="form-control" required>
+            </div>
+            <div class="d-grid gap-2">
+              <button type="submit" class="btn btn-success">Aceptar</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

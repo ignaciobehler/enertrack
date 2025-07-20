@@ -1,0 +1,556 @@
+{% extends "layout.html" %}
+
+{% block title %}Dashboard {{ magnitud|capitalize }} – {{ nodo.esp_id }}{% endblock %}
+
+{% block body %}
+<div class="container">
+    <div class="dashboard-container" style="background: var(--color-bg);">
+        <!-- Header del Dashboard -->
+        <div class="dashboard-header" style="background: var(--color-header); position: relative;">
+            <div class="container-fluid">
+                <div class="row align-items-center">
+                    <div class="col-md-12 d-flex justify-content-between align-items-center">
+                        <div>
+                            <h1 class="h4 mb-0 dashboard-title-azul">
+                                {% if magnitud == 'tension' %}
+                                    <i class="fas fa-bolt dashboard-icon-azul me-2"></i>
+                                    Monitoreo de Tensión
+                                {% elif magnitud == 'corriente' %}
+                                    <i class="fas fa-battery-half dashboard-icon-azul me-2"></i>
+                                    Monitoreo de Corriente
+                                {% elif magnitud == 'consumo' %}
+                                    <i class="fas fa-bolt-lightning dashboard-icon-azul me-2"></i>
+                                    Monitoreo de Consumo Energético
+                                {% elif magnitud == 'pf' %}
+                                    <i class="fas fa-percentage dashboard-icon-azul me-2"></i>
+                                    Factor de Potencia
+                                {% elif magnitud == 'frecuencia' %}
+                                    <i class="fas fa-wave-square dashboard-icon-azul me-2"></i>
+                                    Frecuencia
+                                {% else %}
+                                    <i class="fas fa-chart-line dashboard-icon-azul me-2"></i>
+                                    {{ magnitud|capitalize }}
+                                {% endif %}
+                            </h1>
+                            <p class="dashboard-text-muted mb-0">Gráfico de {{ magnitud|capitalize }} a través del tiempo</p>
+                        </div>
+                        <div class="d-flex align-items-center">
+                            <button class="btn btn-outline-primary btn-sm me-2" onclick="window.location='{{ url_for('index') }}'" title="Volver al Panel Principal">
+                                <i class="bi bi-arrow-left"></i> Volver al Panel Principal
+                            </button>
+                            <div class="dropdown">
+                                <button class="btn btn-outline-secondary btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown">
+                                    <i class="fas fa-cog"></i>
+                                    <span class="ms-1">Acciones</span>
+                                </button>
+                                <ul class="dropdown-menu">
+                                    <li><a class="dropdown-item" href="#" onclick="window.print(); return false;">
+                                        <i class="fas fa-print me-2"></i>Imprimir
+                                    </a></li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Selector de rango de tiempo -->
+        <div class="container-fluid mt-3 mb-2">
+            <div class="row">
+                <div class="col-md-4 offset-md-8 text-end">
+                    <label for="rangoTiempo" class="form-label me-2">Rango de tiempo:</label>
+                    <select id="rangoTiempo" class="form-select form-select-sm d-inline-block w-auto rango-tiempo-select">
+                        <option value="30">Últimos 30 minutos</option>
+                        <option value="60">Última hora</option>
+                        <option value="360">Últimas 6 horas</option>
+                        <option value="1440">Último día</option>
+                        <option value="10080">Última semana</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+
+        <!-- Contenido del Dashboard -->
+        <div class="dashboard-content">
+            <div class="container-fluid">
+
+
+                <!-- Métricas principales -->
+                <div class="row mb-4">
+                    {% if magnitud == 'consumo' %}
+                        <!-- Para consumo: 5 métricas en una fila -->
+                        <div class="col-md-2-4">
+                            <div class="metric-card">
+                                <div class="metric-icon">
+                                    <span style="font-size:1.5em;">💡</span>
+                                </div>
+                                <div class="metric-content">
+                                    <div class="metric-value dashboard-text" id="valorActual">-</div>
+                                    <div class="metric-label dashboard-text-muted">Consumo actual</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-2-4">
+                            <div class="metric-card">
+                                <div class="metric-icon">
+                                    <span style="font-size:1.5em;">⬆️</span>
+                                </div>
+                                <div class="metric-content">
+                                    <div class="metric-value dashboard-text" id="valorMax">-</div>
+                                    <div class="metric-label dashboard-text-muted">Máximo</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-2-4">
+                            <div class="metric-card">
+                                <div class="metric-icon">
+                                    <span style="font-size:1.5em;">⬇️</span>
+                                </div>
+                                <div class="metric-content">
+                                    <div class="metric-value dashboard-text" id="valorMin">-</div>
+                                    <div class="metric-label dashboard-text-muted">Mínimo</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-2-4">
+                            <div class="metric-card">
+                                <div class="metric-icon">
+                                    <span style="font-size:1.5em;">📊</span>
+                                </div>
+                                <div class="metric-content">
+                                    <div class="metric-value dashboard-text" id="valorProm">-</div>
+                                    <div class="metric-label dashboard-text-muted">Promedio</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-2-4">
+                            <div class="metric-card">
+                                <div class="metric-icon">
+                                    <span style="font-size:1.5em;">Σ</span>
+                                </div>
+                                <div class="metric-content">
+                                    <div class="metric-value dashboard-text" id="valorTotal">-</div>
+                                    <div class="metric-label dashboard-text-muted">Consumo total</div>
+                                </div>
+                            </div>
+                        </div>
+                    {% else %}
+                        <!-- Para otras magnitudes: 4 métricas en una fila -->
+                        <div class="col-md-3">
+                            <div class="metric-card">
+                                <div class="metric-icon">
+                                    {% if magnitud == 'tension' %}
+                                        <span style="font-size:1.5em;">⚡️</span>
+                                    {% elif magnitud == 'corriente' %}
+                                        <span style="font-size:1.5em;">🔋</span>
+                                    {% elif magnitud == 'pf' %}
+                                        <span style="font-size:1.5em;">📈</span>
+                                    {% elif magnitud == 'frecuencia' %}
+                                        <span style="font-size:1.5em;">🔄</span>
+                                    {% else %}
+                                        <span style="font-size:1.5em;">📊</span>
+                                    {% endif %}
+                                </div>
+                                <div class="metric-content">
+                                    <div class="metric-value" id="valorActual">-</div>
+                                    <div class="metric-label">Actual</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="metric-card">
+                                <div class="metric-icon">
+                                    <span style="font-size:1.5em;">⬆️</span>
+                                </div>
+                                <div class="metric-content">
+                                    <div class="metric-value" id="valorMax">-</div>
+                                    <div class="metric-label">Máximo</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="metric-card">
+                                <div class="metric-icon">
+                                    <span style="font-size:1.5em;">⬇️</span>
+                                </div>
+                                <div class="metric-content">
+                                    <div class="metric-value" id="valorMin">-</div>
+                                    <div class="metric-label">Mínimo</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="metric-card">
+                                <div class="metric-icon">
+                                    <span style="font-size:1.5em;">📊</span>
+                                </div>
+                                <div class="metric-content">
+                                    <div class="metric-value" id="valorProm">-</div>
+                                    <div class="metric-label">Promedio</div>
+                                </div>
+                            </div>
+                        </div>
+                    {% endif %}
+                </div>
+
+                <!-- Gráfico principal y tabla igual que dashboards.html, sin efectos hover ni preview -->
+                <div class="row mb-4">
+                    <div class="col-12">
+                        <div class="card" style="background: var(--color-card);">
+                            <div class="card-header" style="background: var(--color-header);">
+                                <h5 class="card-title mb-0">
+                                    <i class="fas fa-chart-line me-2"></i>
+                                    Variación de {{ magnitud|capitalize }} en el Tiempo
+                                </h5>
+                            </div>
+                            <div class="card-body chartjs-bg">
+                                <div class="chart-container" style="box-shadow: 0 4px 16px rgba(33,37,41,0.10); border-radius: 12px; min-height: 400px;">
+                                    <canvas id="magnitudChart" width="1000" height="400"></canvas>
+                                </div>
+                                <div class="text-end mt-2">
+                                    <span id="horaSeleccionada" class="text-muted small">Hora: <span id="horaValor">-</span></span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col-12">
+                        <div class="card">
+                            <div class="card-header">
+                                <h5 class="card-title mb-0">
+                                    <i class="fas fa-table me-2"></i>
+                                    Historial de Lecturas
+                                </h5>
+                            </div>
+                            <div class="card-body">
+                                <div class="table-responsive">
+                                    <table class="table table-hover">
+                                        <thead>
+                                            <tr>
+                                                <th>Fecha</th>
+                                                <th>Hora</th>
+                                                <th>{{ magnitud|capitalize }} {% if magnitud == 'tension' %}(V){% elif magnitud == 'corriente' %}(A){% elif magnitud == 'consumo' %}(kWh){% elif magnitud == 'pf' %}(-){% elif magnitud == 'frecuencia' %}(Hz){% endif %}</th>
+                                                <th>Variación</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="tablaMagnitud">
+                                            <!-- Se llenará por JS -->
+                                        </tbody>
+                                    </table>
+                                    <nav>
+                                        <ul class="pagination justify-content-center" id="paginacionTablaMagnitud"></ul>
+                                    </nav>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+<!-- Script para preparar integración con InfluxDB -->
+<script>
+// IDs útiles: nodo_id = {{ nodo.nodo_id }}, esp_id = '{{ nodo.esp_id }}', magnitud = '{{ magnitud }}'
+// Aquí puedes hacer fetch a tu API Flask que consulta InfluxDB y llenar los valores y el gráfico
+// Ejemplo:
+// fetch(`/api/nodo/${{ nodo.nodo_id }}/latest?magnitud={{ magnitud }}`)
+//   .then(r => r.json()).then(data => { ... });
+</script>
+{% endblock %}
+{% block scripts %}
+<style>
+/* Estilos personalizados para las métricas */
+.col-md-2-4 {
+    flex: 0 0 20%;
+    max-width: 20%;
+    padding: 0 10px;
+}
+
+@media (max-width: 768px) {
+    .col-md-2-4 {
+        flex: 0 0 50%;
+        max-width: 50%;
+        margin-bottom: 15px;
+    }
+}
+
+@media (max-width: 576px) {
+    .col-md-2-4 {
+        flex: 0 0 100%;
+        max-width: 100%;
+    }
+}
+
+/* Mejorar el diseño de las métricas */
+.metric-card {
+    background: var(--color-card);
+    border-radius: 12px;
+    padding: 20px;
+    box-shadow: 0 4px 16px rgba(33,37,41,0.10);
+    border: 1px solid var(--color-border);
+    transition: all 0.3s ease;
+    height: 100%;
+    display: flex;
+    align-items: center;
+}
+
+.metric-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 25px rgba(33,37,41,0.15);
+}
+
+.metric-icon {
+    margin-right: 15px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 50px;
+    height: 50px;
+    background: rgba(255,193,7,0.1);
+    border-radius: 50%;
+}
+
+.metric-content {
+    flex: 1;
+}
+
+.metric-value {
+    font-size: 1.8rem;
+    font-weight: bold;
+    color: var(--color-text);
+    margin-bottom: 5px;
+    line-height: 1.2;
+}
+
+.metric-label {
+    font-size: 0.9rem;
+    color: var(--color-text-muted);
+    font-weight: 500;
+    line-height: 1.2;
+}
+</style>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+function getChartColors() {
+  const isDark = document.body.classList.contains('dark-theme') || document.documentElement.getAttribute('data-theme') === 'dark';
+  return {
+    axis: isDark ? '#f1f5f9' : '#374151',
+    grid: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(30,64,175,0.08)'
+  };
+}
+function updateAllChartsTheme() {
+  if (window.Chart && Chart.instances) {
+    Object.values(Chart.instances).forEach(chart => {
+      const chartColors = getChartColors();
+      if (chart.options.scales) {
+        if (chart.options.scales.x) {
+          chart.options.scales.x.ticks.color = chartColors.axis;
+          chart.options.scales.x.grid.color = chartColors.grid;
+        }
+        if (chart.options.scales.y) {
+          chart.options.scales.y.ticks.color = chartColors.axis;
+          chart.options.scales.y.grid.color = chartColors.grid;
+        }
+        if (chart.options.scales.y1) {
+          chart.options.scales.y1.ticks.color = chartColors.axis;
+          chart.options.scales.y1.grid.color = chartColors.grid;
+        }
+      }
+      chart.update();
+    });
+  }
+}
+document.getElementById('themeToggle').addEventListener('click', function() {
+  setTimeout(updateAllChartsTheme, 300);
+});
+const nodoId = {{ nodo.nodo_id }};
+const magnitud = '{{ magnitud }}';
+const colorMap = {
+  energia:    { border:'#ef4444', bg:'rgba(239,68,68,.1)', label:'Energía (kWh)' },
+  tension:    { border:'#ffc107', bg:'rgba(255,193,7,.1)', label:'Tensión (V)' },
+  corriente:  { border:'#22c55e', bg:'rgba(34,197,94,.1)', label:'Corriente (A)' },
+  pf:         { border:'#2563eb', bg:'rgba(37,99,235,.1)', label:'Factor de Potencia' },
+  frecuencia: { border:'#0dcaf0', bg:'rgba(13,202,240,.1)', label:'Frecuencia (Hz)' }
+};
+const color = colorMap[magnitud] || { border:'#888', bg:'rgba(100,100,100,.1)', label:magnitud };
+let chart;
+let lastLabels = [];
+
+function renderChart(labels, data) {
+  lastLabels = labels;
+  const ctx = document.getElementById('magnitudChart').getContext('2d');
+  if (chart) chart.destroy();
+  const chartColors = getChartColors();
+  chart = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: labels,
+      datasets: [{
+        data: data,
+        borderColor: color.border,
+        backgroundColor: color.bg,
+        tension: .35,
+        fill: true,
+        pointRadius: 0
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          enabled: true,
+          callbacks: {
+            title: function(context) {
+              // Muestra la hora en el tooltip
+              return 'Hora: ' + context[0].label;
+            },
+            label: function(context) {
+              return 'Valor: ' + context.parsed.y;
+            }
+          },
+          // Al mostrar el tooltip, actualiza la hora debajo del gráfico
+          external: function(context) {
+            if (context.tooltip && context.tooltip.dataPoints && context.tooltip.dataPoints.length > 0) {
+              document.getElementById('horaValor').textContent = context.tooltip.dataPoints[0].label;
+            } else if (labels.length > 0) {
+              document.getElementById('horaValor').textContent = labels[labels.length-1];
+            } else {
+              document.getElementById('horaValor').textContent = '-';
+            }
+          }
+        }
+      },
+      scales: {
+        y: {
+          title: { display: true, text: color.label },
+          grid: { color: chartColors.grid },
+          ticks: { color: chartColors.axis }
+        },
+        x: {
+          grid: { color: chartColors.grid },
+          ticks: { color: chartColors.axis }
+        }
+      }
+    }
+  });
+  // Inicializa la hora debajo del gráfico con la última
+  if (labels.length > 0) {
+    document.getElementById('horaValor').textContent = labels[labels.length-1];
+  } else {
+    document.getElementById('horaValor').textContent = '-';
+  }
+}
+
+function renderTable(datos, pagina = 1, porPagina = 20) {
+  const tbody = document.getElementById('tablaMagnitud');
+  tbody.innerHTML = '';
+  if (!datos || datos.length === 0) {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td colspan="4" class="text-center text-muted">No hay datos disponibles</td>`;
+    tbody.appendChild(tr);
+    document.getElementById('paginacionTablaMagnitud').innerHTML = '';
+    return;
+  }
+  // Paginación
+  const totalPaginas = Math.ceil(datos.length / porPagina);
+  const inicio = (pagina - 1) * porPagina;
+  const fin = inicio + porPagina;
+  const datosPagina = datos.slice(inicio, fin);
+  datosPagina.forEach((registro, index) => {
+    const realIndex = inicio + index;
+    // Mostrar fecha y hora por separado si existen
+    let fecha = '-';
+    let hora = '-';
+    if (registro.fecha && registro.hora) {
+      fecha = registro.fecha;
+      hora = registro.hora;
+    } else if (registro.fecha) {
+      // Si solo hay fecha, intentar extraer hora si es tipo ISO
+      const d = new Date(registro.fecha);
+      if (!isNaN(d.getTime())) {
+        fecha = d.toLocaleDateString('es-ES');
+        hora = d.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      } else {
+        fecha = registro.fecha;
+      }
+    } else if (registro.tiempo) {
+      hora = registro.tiempo;
+    }
+    const valor = registro.valor.toFixed(2);
+    let variacion = '-';
+    if (realIndex > 0) {
+      const diff = registro.valor - datos[realIndex-1].valor;
+      variacion = diff > 0 ? `+${diff.toFixed(2)}` : diff.toFixed(2);
+    }
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${fecha}</td><td>${hora}</td><td>${valor}</td><td>${variacion}</td>`;
+    tbody.appendChild(tr);
+  });
+  // Renderizar paginación
+  const paginacion = document.getElementById('paginacionTablaMagnitud');
+  paginacion.innerHTML = '';
+  if (totalPaginas > 1) {
+    for (let i = 1; i <= totalPaginas; i++) {
+      const li = document.createElement('li');
+      li.className = 'page-item' + (i === pagina ? ' active' : '');
+      const a = document.createElement('a');
+      a.className = 'page-link';
+      a.href = '#';
+      a.textContent = i;
+      a.onclick = (e) => { e.preventDefault(); renderTable(datos, i, porPagina); };
+      li.appendChild(a);
+      paginacion.appendChild(li);
+    }
+  }
+}
+
+function renderMetrics(estadisticas) {
+    if (document.getElementById('valorTotal')) {
+        document.getElementById('valorTotal').textContent = (estadisticas.total !== undefined && estadisticas.total !== null) ? estadisticas.total.toFixed(2) : '-';
+    }
+  document.getElementById('valorActual').textContent = estadisticas.actual ? estadisticas.actual.toFixed(2) : '-';
+  document.getElementById('valorMax').textContent = estadisticas.maximo ? estadisticas.maximo.toFixed(2) : '-';
+  document.getElementById('valorMin').textContent = estadisticas.minimo ? estadisticas.minimo.toFixed(2) : '-';
+  document.getElementById('valorProm').textContent = estadisticas.promedio ? estadisticas.promedio.toFixed(2) : '-';
+}
+
+function fetchAndRender(rango) {
+  console.log('Fetching data for:', magnitud, 'nodo:', nodoId, 'rango:', rango);
+  
+  fetch(`/enertrack/api/nodo/${nodoId}/magnitud/${magnitud}?rango=${rango}`)
+    .then(r => r.json())
+    .then(data => {
+      if (data.datos && data.datos.length > 0) {
+        // Procesar datos para el formato esperado por Chart.js
+        const labels = data.datos.map(d => d.tiempo); // El backend ya envía HH:MM:SS
+        const valores = data.datos.map(d => d.valor);
+        
+        renderChart(labels, valores);
+        renderTable(data.datos, 1, 20); // Cambiado para incluir paginación
+        renderMetrics(data.estadisticas);
+      } else {
+        renderChart([], []);
+        renderTable([], 1, 20); // Cambiado para incluir paginación
+        renderMetrics({ actual: null, maximo: null, minimo: null, promedio: null });
+      }
+    })
+    .catch(error => {
+      console.error('Error fetching data:', error);
+      renderChart([], []);
+      renderTable([], 1, 20); // Cambiado para incluir paginación
+      renderMetrics({ actual: '-', max: '-', min: '-', prom: '-', lastUpdate: '-' });
+    });
+}
+
+document.getElementById('rangoTiempo').addEventListener('change', function() {
+  fetchAndRender(this.value);
+});
+// Inicializa con el rango por defecto
+fetchAndRender(document.getElementById('rangoTiempo').value);
+</script>
+{% endblock %} 

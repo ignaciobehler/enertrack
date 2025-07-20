@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>{% block title %}EnerTrack{% endblock %}</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <!-- Bootstrap base -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" />
+  <!-- Bootstrap Icons -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" />
+  <!-- Estilos personalizados -->
+  {% include 'estilos.html' %}
+</head>
+<body>
+  <!-- NAVBAR -->
+  <nav class="navbar navbar-expand-lg mb-4">
+    <div class="container">
+      <a class="navbar-brand d-flex align-items-center gap-2" href="{{ url_for('index') }}">
+        <i class="bi bi-lightning-charge"></i> EnerTrack
+      </a>
+      {% if session.get('user_id') %}
+      <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+        <span class="navbar-toggler-icon"></span>
+      </button>
+      <div class="collapse navbar-collapse" id="navbarNav">
+        <ul class="navbar-nav me-auto">
+          <li class="nav-item">
+            <a class="nav-link" href="{{ url_for('index') }}">
+              <i class="bi bi-house"></i> Panel Principal
+            </a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link" href="{{ url_for('mis_nodos') }}">
+              <i class="bi bi-microchip"></i> Mis Nodos
+            </a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link" href="{{ url_for('consumo_global') }}">
+              <i class="bi bi-chart-pie"></i> Consumo Global
+            </a>
+          </li>
+        </ul>
+        <div class="d-flex align-items-center gap-2">
+          <button class="btn btn-outline-light" id="themeToggle" title="Alternar tema">
+            <i class="bi bi-moon-stars"></i>
+          </button>
+          <span class="navbar-text text-light">{{ session.get('username') }}</span>
+          <a href="{{ url_for('logout') }}" class="btn btn-outline-danger ms-2">
+            <i class="bi bi-box-arrow-right"></i> Salir
+          </a>
+        </div>
+      </div>
+      {% else %}
+      <div class="d-flex align-items-center">
+        <button class="btn btn-outline-light" id="themeToggle" title="Alternar tema">
+          <i class="bi bi-moon-stars"></i>
+        </button>
+        </div>
+      {% endif %}
+    </div>
+  </nav>
+
+  <!-- Mensajes Flash -->
+  {% if get_flashed_messages() %}
+  <div class="position-fixed top-0 end-0 p-3" style="z-index: 1055">
+    {% for category, message in get_flashed_messages(with_categories=true) %}
+    <div class="alert alert-dismissible fade show flash-message {% if category == 'success' %}alert-success{% elif category == 'danger' %}alert-danger{% else %}alert-info{% endif %}" role="alert">
+      {{ message }}
+      <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  <!-- CONTENIDO -->
+  <main class="container pb-4">
+    {% block body %}{% endblock %}
+  </main>
+
+  <!-- Bootstrap JS -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+  <!-- Script para tema claro/oscuro moderno -->
+  <script>
+  document.addEventListener('DOMContentLoaded', function () {
+    const themeToggle = document.getElementById('themeToggle');
+    const themeIcon = themeToggle?.querySelector('i');
+    // Función para aplicar tema
+    function applyTheme(theme) {
+      document.documentElement.setAttribute('data-theme', theme);
+      if (theme === 'dark') {
+        if (themeIcon) themeIcon.className = 'bi bi-sun-fill';
+        document.body.classList.remove('light-theme');
+        document.body.classList.add('dark-theme');
+      } else {
+        if (themeIcon) themeIcon.className = 'bi bi-moon-stars';
+        document.body.classList.remove('dark-theme');
+        document.body.classList.add('light-theme');
+      }
+    }
+    // Cargar tema guardado o usar el tema preferido del usuario
+    let savedTheme = localStorage.getItem('theme');
+    if (!savedTheme) {
+      savedTheme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    }
+    applyTheme(savedTheme);
+    // Cambiar tema al hacer click
+    if (themeToggle) {
+      themeToggle.addEventListener('click', () => {
+        let currentTheme = document.documentElement.getAttribute('data-theme');
+        let newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+        applyTheme(newTheme);
+        localStorage.setItem('theme', newTheme);
+      });
+    }
+  });
+  </script>
+  {% block scripts %}{% endblock %}
+
+  <!-- Footer fijo -->
+  <footer class="footer bg-dark text-light border-top mt-4" style="font-size:0.92rem; padding: 0.2rem 0; opacity:0.97;">
+    <div class="container d-flex flex-column flex-md-row justify-content-between align-items-center py-1">
+      <div class="d-flex align-items-center gap-2">
+        <span class="fw-semibold" style="letter-spacing:0.5px;">Ignacio Behler</span>
+        <span class="text-muted" style="font-size:0.85em;">© {{ current_year }}</span>
+        <span class="d-none d-md-inline text-muted">·</span>
+        <span class="text-muted" style="font-size:0.95em;">EnerTrack</span>
+      </div>
+      <div class="d-flex align-items-center gap-3 mt-1 mt-md-0">
+        <a href="https://mail.google.com/mail/?view=cm&to=ignaciobehler@gmail.com" target="_blank" rel="noopener" class="text-light text-decoration-none" title="Enviar correo con Gmail"><i class="bi bi-envelope"></i></a>
+        <a href="https://github.com/ignaciobehler" target="_blank" class="text-light text-decoration-none" title="GitHub"><i class="bi bi-github"></i></a>
+      </div>
+    </div>
+  </footer>
+
+</body>
+</html>

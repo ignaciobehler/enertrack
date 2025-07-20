@@ -1,0 +1,285 @@
+{% extends "layout.html" %}
+
+{% block title %}{{ nodo.esp_id }} – EnerTrack{% endblock %}
+
+{% block body %}
+<div class="container-fluid">
+  <!-- Header de la página -->
+  <div class="row mb-4">
+    <div class="col-12">
+      <div class="d-flex justify-content-between align-items-center">
+        <div>
+          <h1 class="h3 mb-0 dashboard-title-azul">
+            <i class="fas fa-microchip dashboard-icon-azul me-2"></i>
+            Dashboard de Nodo <span class="dashboard-text-muted">{{ nodo.esp_id }}</span>
+          </h1>
+          <p class="dashboard-text-muted mb-0">Monitoreo y métricas en tiempo real del nodo seleccionado</p>
+        </div>
+        <div>
+          <a href="{{ url_for('index') }}" class="btn btn-outline-secondary">
+            <i class="bi bi-arrow-left"></i> Volver
+          </a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Grid de dashboard -->
+  <div class="row">
+    <div class="col-lg-8 mb-4">
+      <div class="card h-100 dashboard-card">
+        <div class="card-header d-flex justify-content-between align-items-center">
+          <div class="d-flex align-items-center">
+            <div class="dashboard-icon me-3">
+              <i class="fas fa-bolt text-warning fa-2x"></i>
+            </div>
+            <div>
+              <h5 class="card-title mb-0">Monitoreo de Tensión y Corriente</h5>
+              <small class="text-muted">Gráfico de tensión y corriente en tiempo real</small>
+            </div>
+          </div>
+          <div class="dashboard-status">
+            <span class="badge" id="estado-nodo" style="background:#adb5bd; color:#fff;">
+              <i class="fas fa-circle me-1"></i>
+              Desconectado
+            </span>
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="dashboard-preview">
+            <div class="preview-chart">
+              <canvas id="mainChart" height="220"></canvas>
+            </div>
+            <div class="preview-info mt-4">
+              <div class="row text-center">
+                <div class="col-4">
+                  <div class="metric-preview">
+                    <div class="metric-value dashboard-text" id="current-volt">-</div>
+                    <div class="metric-label dashboard-text-muted">Tensión actual</div>
+                  </div>
+                </div>
+                <div class="col-4">
+                  <div class="metric-preview">
+                    <div class="metric-value dashboard-text" id="max-volt">-</div>
+                    <div class="metric-label dashboard-text-muted">Tensión máxima</div>
+                  </div>
+                </div>
+                <div class="col-4">
+                  <div class="metric-preview">
+                    <div class="metric-value dashboard-text" id="min-volt">-</div>
+                    <div class="metric-label dashboard-text-muted">Tensión mínima</div>
+                  </div>
+                </div>
+              </div>
+              <div class="row text-center mt-3">
+                <div class="col-4">
+                  <div class="metric-preview">
+                    <div class="metric-value dashboard-text" id="current-curr">-</div>
+                    <div class="metric-label dashboard-text-muted">Corriente actual</div>
+                  </div>
+                </div>
+                <div class="col-4">
+                  <div class="metric-preview">
+                    <div class="metric-value dashboard-text" id="max-curr">-</div>
+                    <div class="metric-label dashboard-text-muted">Corriente máxima</div>
+                  </div>
+                </div>
+                <div class="col-4">
+                  <div class="metric-preview">
+                    <div class="metric-value dashboard-text" id="min-curr">-</div>
+                    <div class="metric-label dashboard-text-muted">Corriente mínima</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="card-footer d-flex justify-content-between align-items-center">
+          <small class="dashboard-text-muted" id="last-update-main">
+            <i class="fas fa-clock me-1"></i>
+            Última actualización: -
+          </small>
+          <span class="dashboard-text-muted">ESP ID: <code>{{ nodo.esp_id }}</code></span>
+        </div>
+      </div>
+    </div>
+    <div class="col-lg-4 mb-4">
+      <div class="card h-100">
+        <div class="card-header">
+          <i class="bi bi-info-circle me-2"></i> Información del nodo
+        </div>
+        <div class="card-body">
+          <div class="mb-3">
+            <strong class="dashboard-text">Estado:</strong>
+            <span id="estado-nodo-info">
+              {% if nodo.activo %}
+                <span class="badge bg-success"><i class="bi bi-circle-fill"></i> Activo</span>
+              {% else %}
+                <span class="badge bg-secondary"><i class="bi bi-circle"></i> Inactivo</span>
+              {% endif %}
+            </span>
+          </div>
+          <div class="mb-3">
+            <strong class="dashboard-text">Último acceso:</strong><br>
+            {% if nodo.ultimo_acceso %}
+              <small class="text-muted">{{ nodo.ultimo_acceso.strftime('%d/%m/%Y %H:%M:%S') }}</small>
+            {% else %}
+              <small class="text-muted">Nunca</small>
+            {% endif %}
+          </div>
+          <div class="mb-3">
+            <strong class="dashboard-text">Descripción:</strong><br>
+            <span class="dashboard-text-muted">{{ nodo.descripcion or "Sin descripción" }}</span>
+          </div>
+          {% if nodo.ubicacion %}
+          <div class="mb-3">
+            <strong class="dashboard-text">Ubicación:</strong><br>
+            <span class="dashboard-text-muted">{{ nodo.ubicacion }}</span>
+          </div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<!-- Chart.js -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+function getChartColors() {
+  const isDark = document.body.classList.contains('dark-theme') || document.documentElement.getAttribute('data-theme') === 'dark';
+  return {
+    axis: isDark ? '#f1f5f9' : '#374151',
+    grid: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(30,64,175,0.08)'
+  };
+}
+function updateAllChartsTheme() {
+  if (window.Chart && Chart.instances) {
+    Object.values(Chart.instances).forEach(chart => {
+      const chartColors = getChartColors();
+      if (chart.options.scales) {
+        if (chart.options.scales.x) {
+          chart.options.scales.x.ticks.color = chartColors.axis;
+          chart.options.scales.x.grid.color = chartColors.grid;
+        }
+        if (chart.options.scales.y) {
+          chart.options.scales.y.ticks.color = chartColors.axis;
+          chart.options.scales.y.grid.color = chartColors.grid;
+        }
+        if (chart.options.scales.y1) {
+          chart.options.scales.y1.ticks.color = chartColors.axis;
+          chart.options.scales.y1.grid.color = chartColors.grid;
+        }
+      }
+      chart.update();
+    });
+  }
+}
+document.getElementById('themeToggle').addEventListener('click', function() {
+  setTimeout(updateAllChartsTheme, 300);
+});
+// Simulación de datos para el ejemplo (reemplazar por fetch real)
+function getRandom(min, max) {
+  return Math.random() * (max - min) + min;
+}
+
+let voltData = Array.from({length: 20}, () => getRandom(210, 230));
+let currData = Array.from({length: 20}, () => getRandom(2, 5));
+let labels = Array.from({length: 20}, (_, i) => `${i+1}`);
+
+let mainChart;
+
+function updateMetrics() {
+  // Actual
+  document.getElementById('current-volt').textContent = voltData[voltData.length-1].toFixed(2) + ' V';
+  document.getElementById('current-curr').textContent = currData[currData.length-1].toFixed(2) + ' A';
+  // Máximo
+  document.getElementById('max-volt').textContent = Math.max(...voltData).toFixed(2) + ' V';
+  document.getElementById('max-curr').textContent = Math.max(...currData).toFixed(2) + ' A';
+  // Mínimo
+  document.getElementById('min-volt').textContent = Math.min(...voltData).toFixed(2) + ' V';
+  document.getElementById('min-curr').textContent = Math.min(...currData).toFixed(2) + ' A';
+  // Última actualización
+  document.getElementById('last-update-main').innerHTML = '<i class="fas fa-clock me-1"></i>Última actualización: ' + new Date().toLocaleTimeString();
+}
+
+function updateChart() {
+  if (mainChart) {
+    mainChart.data.labels = labels;
+    mainChart.data.datasets[0].data = voltData;
+    mainChart.data.datasets[1].data = currData;
+    mainChart.update();
+  }
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+  const ctx = document.getElementById('mainChart').getContext('2d');
+  const chartColors = getChartColors();
+  mainChart = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: labels,
+      datasets: [
+        {
+          label: 'Tensión (V)',
+          data: voltData,
+          borderColor: '#ffc107',
+          backgroundColor: 'rgba(255, 193, 7, 0.1)',
+          tension: 0.4,
+          fill: true,
+          yAxisID: 'y',
+        },
+        {
+          label: 'Corriente (A)',
+          data: currData,
+          borderColor: '#0dcaf0',
+          backgroundColor: 'rgba(13, 202, 240, 0.1)',
+          tension: 0.4,
+          fill: true,
+          yAxisID: 'y1',
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { position: 'top' } },
+      scales: {
+        x: { display: true, grid: { color: chartColors.grid }, ticks: { color: chartColors.axis } },
+        y: {
+          type: 'linear',
+          display: true,
+          position: 'left',
+          title: { display: true, text: 'Tensión (V)' },
+          grid: { color: chartColors.grid },
+          ticks: { color: chartColors.axis }
+        },
+        y1: {
+          type: 'linear',
+          display: true,
+          position: 'right',
+          title: { display: true, text: 'Corriente (A)' },
+          grid: { drawOnChartArea: false, color: chartColors.grid },
+          ticks: { color: chartColors.axis }
+        }
+      },
+      elements: { point: { radius: 0 } }
+    }
+  });
+  updateMetrics();
+  setInterval(() => {
+    // Simular nuevos datos
+    voltData.push(getRandom(210, 230));
+    currData.push(getRandom(2, 5));
+    if (voltData.length > 20) voltData.shift();
+    if (currData.length > 20) currData.shift();
+    labels.push((parseInt(labels[labels.length-1]) + 1).toString());
+    if (labels.length > 20) labels.shift();
+    updateChart();
+    updateMetrics();
+  }, 5000);
+});
+</script>
+{% endblock %} 

@@ -1,0 +1,380 @@
+{% extends "layout.html" %}
+
+{% block title %}Mis Nodos – EnerTrack{% endblock %}
+
+{% block head %}
+<style>
+/* Estilos para las cards de nodos */
+.nodo-card {
+    background: var(--color-card);
+    border-radius: 12px;
+    padding: 20px;
+    box-shadow: 0 4px 16px rgba(33,37,41,0.10);
+    border: 1px solid var(--color-border);
+    transition: all 0.3s ease;
+    margin-bottom: 20px;
+}
+
+.nodo-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 25px rgba(33,37,41,0.15);
+}
+
+.nodo-header {
+    display: flex;
+    justify-content: between;
+    align-items: center;
+    margin-bottom: 15px;
+}
+
+.nodo-title {
+    font-weight: bold;
+    color: var(--color-primary);
+    font-size: 1.1rem;
+}
+
+.nodo-actions {
+    display: flex;
+    gap: 10px;
+}
+
+.nodo-info {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 15px;
+    margin-bottom: 15px;
+}
+
+.nodo-info-item {
+    display: flex;
+    flex-direction: column;
+}
+
+.nodo-info-label {
+    font-size: 0.8rem;
+    color: var(--color-text-muted);
+    margin-bottom: 5px;
+}
+
+.nodo-info-value {
+    font-weight: 600;
+    color: var(--color-text);
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .nodo-info {
+        grid-template-columns: 1fr;
+    }
+    
+    .nodo-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 10px;
+    }
+    
+    .nodo-actions {
+        width: 100%;
+        justify-content: flex-end;
+    }
+}
+.nodo-header-azul {
+    background: var(--primary);
+    color: #fff;
+    transition: background 0.3s, color 0.3s;
+}
+[data-theme='dark'] .nodo-header-azul,
+body.dark-theme .nodo-header-azul {
+    background: var(--primary-dark) !important;
+    color: #fff;
+}
+.nodo-title-azul {
+    color: #fff;
+    font-size: 1.1rem;
+    font-weight: bold;
+}
+.nodo-espid-azul {
+    color: #e0e7ef;
+    font-size: 0.9rem;
+}
+.nodo-ultima-actualizacion {
+    color: var(--text-muted-light);
+    font-size: 0.95em;
+    word-break: break-word;
+    white-space: normal;
+    display: inline-block;
+    max-width: 100%;
+}
+[data-theme='dark'] .nodo-ultima-actualizacion,
+body.dark-theme .nodo-ultima-actualizacion {
+    color: var(--text-muted-dark);
+}
+.nodo-cpu-icon {
+    color: var(--primary-dark);
+    transition: color 0.3s;
+}
+[data-theme='dark'] .nodo-cpu-icon,
+body.dark-theme .nodo-cpu-icon {
+    color: #fff;
+}
+.ayuda-campo {
+    color: var(--color-text-muted);
+    font-size: 0.9em;
+    transition: color 0.3s;
+}
+[data-theme='dark'] .ayuda-campo,
+body.dark-theme .ayuda-campo {
+    color: #fff;
+}
+</style>
+{% endblock %}
+
+{% block body %}
+<div class="container">
+    <div class="dashboard-container" style="background: var(--color-bg);">
+        <!-- Header del Dashboard -->
+        <div class="dashboard-header" style="background: var(--color-header); position: relative;">
+            <div class="container-fluid">
+                <div class="row align-items-center">
+                    <div class="col-md-12 d-flex justify-content-between align-items-center">
+                        <div>
+                            <h1 class="h4 mb-0">
+                                <i class="bi bi-cpu text-primary me-2"></i>
+                                Mis Nodos
+                            </h1>
+                            <p class="text-muted mb-0">Gestiona todos tus dispositivos de monitoreo</p>
+                        </div>
+                        <div class="d-flex align-items-center">
+                            <button class="btn btn-outline-primary btn-sm me-2" onclick="window.location='{{ url_for('index') }}'" title="Volver al Panel">
+                                <i class="bi bi-arrow-left"></i> Panel Principal
+                            </button>
+                            <button class="btn btn-primary btn-sm" type="button" data-bs-toggle="collapse" data-bs-target="#addNodeForm" aria-expanded="false">
+                                <i class="bi bi-plus-circle"></i> Agregar Nodo
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Formulario colapsable para agregar nodo -->
+        <div class="collapse" id="addNodeForm">
+            <div class="container-fluid mt-3">
+                <div class="card" style="background: var(--color-card);">
+                    <div class="card-header" style="background: var(--color-header);">
+                        <h5 class="card-title mb-0">
+                            <i class="bi bi-plus-circle me-2"></i>
+                            Agregar Nuevo Nodo
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <form method="POST" action="{{ url_for('add_node') }}" id="addNodeFormElement">
+                            <div class="row g-3">
+                                <div class="col-md-4">
+                                    <label for="esp_id" class="form-label">ESP ID *</label>
+                                    <input type="text" class="form-control" id="esp_id" name="esp_id" required 
+                                           placeholder="ej: 24A3BC12" pattern="[A-Za-z0-9]+" maxlength="30">
+                                    <div class="form-text ayuda-campo">Identificador único del ESP32 (solo letras y números, sin espacios ni guiones)</div>
+                                </div>
+                                <div class="col-md-4">
+                                    <label for="descripcion" class="form-label">Descripción *</label>
+                                    <input type="text" class="form-control" id="descripcion" name="descripcion" required 
+                                           placeholder="ej: Medidor sala principal" maxlength="200">
+                                    <div class="form-text ayuda-campo">Descripción del medidor para identificarlo fácilmente</div>
+                                </div>
+                                <div class="col-md-4">
+                                    <label for="ubicacion" class="form-label">Ubicación</label>
+                                    <input type="text" class="form-control" id="ubicacion" name="ubicacion" 
+                                           placeholder="ej: Sala principal, planta baja" maxlength="100">
+                                    <div class="form-text ayuda-campo">Ubicación física del medidor (opcional)</div>
+                                </div>
+                            </div>
+                            <div class="mt-3">
+                                <button type="submit" class="btn btn-primary">
+                                    <i class="bi bi-plus-circle"></i> Agregar nodo
+                                </button>
+                                <button type="button" class="btn btn-secondary" data-bs-toggle="collapse" data-bs-target="#addNodeForm">
+                                    Cancelar
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Leyenda de estados -->
+        <div class="container-fluid mt-3">
+            <div class="card" style="background: var(--color-card);">
+                <div class="card-body">
+                    <div class="d-flex justify-content-center">
+                        <div class="d-flex align-items-center gap-4">
+                            <small class="text-muted">Estados de nodos:</small>
+                            <div class="d-flex align-items-center gap-2">
+                                <span class="badge bg-success px-2 py-1" style="font-size: 0.75rem;">
+                                    <i class="bi bi-circle-fill"></i> Activo
+                                </span>
+                                <small class="text-muted">Datos en los últimos 30 min</small>
+                            </div>
+                            <div class="d-flex align-items-center gap-2">
+                                <span class="badge bg-danger px-2 py-1" style="font-size: 0.75rem;">
+                                    <i class="bi bi-circle"></i> Desconectado
+                                </span>
+                                <small class="text-muted">Datos antiguos (>30 min)</small>
+                            </div>
+                            <div class="d-flex align-items-center gap-2">
+                                <span class="badge bg-secondary px-2 py-1" style="font-size: 0.75rem;">
+                                    <i class="bi bi-circle"></i> Sin datos
+                                </span>
+                                <small class="text-muted">Sin datos en 24 horas</small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Lista de nodos -->
+        <div class="container-fluid mt-3">
+            {% if nodos %}
+                <div class="row">
+                    {% for n in nodos %}
+                    <div class="col-md-6 col-lg-4">
+                        <div class="nodo-card p-0" style="overflow: hidden;">
+                            <!-- Encabezado visual -->
+                            <div class="nodo-header-azul" style="padding: 18px 20px 12px 20px; display: flex; align-items: center; gap: 15px;">
+                                <div style="background: rgba(255,255,255,0.18); border-radius: 50%; width: 48px; height: 48px; display: flex; align-items: center; justify-content: center;">
+                                    <i class="bi bi-cpu nodo-cpu-icon" style="font-size: 2rem;"></i>
+                                </div>
+                                <div style="flex:1;">
+                                    <div class="nodo-title mb-0 nodo-title-azul">{{ n.descripcion or n.esp_id }}</div>
+                                    <div class="nodo-espid-azul">ESP ID: <code>{{ n.esp_id }}</code></div>
+                                </div>
+                                <div class="nodo-actions">
+                                    <button class="btn btn-sm btn-outline-primary" onclick="editNodo({{ n.nodo_id }})" title="Editar">
+                                        <i class="bi bi-pencil"></i>
+                                    </button>
+                                    <button class="btn btn-sm btn-outline-danger" onclick="removeNodo({{ n.nodo_id }})" title="Eliminar">
+                                        <i class="bi bi-trash"></i>
+                                    </button>
+                                </div>
+                            </div>
+                            <!-- Cuerpo de información -->
+                            <div class="p-3">
+                                <div class="d-flex flex-wrap align-items-center mb-2 gap-2">
+                                    {% set nodo_estado = kpis.nodos_estado.get(n.esp_id, {}) %}
+                                    {% if nodo_estado.estado == 'activo' %}
+                                        <span class="badge bg-success"><i class="bi bi-circle-fill"></i> Activo</span>
+                                    {% elif nodo_estado.estado == 'desconectado' %}
+                                        <span class="badge bg-danger"><i class="bi bi-circle"></i> Desconectado</span>
+                                    {% elif nodo_estado.estado == 'sin_datos' %}
+                                        <span class="badge bg-secondary"><i class="bi bi-circle"></i> Sin datos</span>
+                                    {% else %}
+                                        <span class="badge bg-warning"><i class="bi bi-question-circle"></i> Desconocido</span>
+                                    {% endif %}
+                                    <span class="ms-2 nodo-ultima-actualizacion">
+                                        {% if nodo_estado.ultima_actualizacion %}
+                                            <i class="bi bi-clock me-1"></i>
+                                            {{ nodo_estado.ultima_actualizacion.split('T')[0].split('-')[2] }}/{{ nodo_estado.ultima_actualizacion.split('T')[0].split('-')[1] }}/{{ nodo_estado.ultima_actualizacion.split('T')[0].split('-')[0] }} {{ nodo_estado.ultima_actualizacion.split('T')[1].split('.')[0][:5] }}
+                                        {% else %}
+                                            <i class="bi bi-clock me-1"></i> Sin actualización
+                                        {% endif %}
+                                    </span>
+                                </div>
+                                <div class="row g-2">
+                                    <div class="col-12">
+                                        <div class="d-flex align-items-center gap-2">
+                                            <i class="bi bi-geo-alt text-primary"></i>
+                                            <span class="text-muted">Ubicación:</span>
+                                            <span>{{ n.ubicacion or '—' }}</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            {% else %}
+                                    <div class="text-center py-5">
+                        <div class="mb-3">
+                            <i class="bi bi-cpu text-muted" style="font-size: 4rem;"></i>
+                        </div>
+                    <h4 class="text-muted">No tienes nodos registrados</h4>
+                    <p class="text-muted">Comienza agregando tu primer nodo para monitorear el consumo energético.</p>
+                    <button class="btn btn-primary" type="button" data-bs-toggle="collapse" data-bs-target="#addNodeForm">
+                        <i class="bi bi-plus-circle"></i> Agregar mi primer nodo
+                    </button>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<!-- Modal para editar nodo -->
+<div class="modal fade" id="editNodoModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Editar Nodo</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="editNodoForm" method="POST">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label for="edit_esp_id" class="form-label">ESP ID *</label>
+                        <input type="text" class="form-control" id="edit_esp_id" name="esp_id" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="edit_descripcion" class="form-label">Descripción *</label>
+                        <input type="text" class="form-control" id="edit_descripcion" name="descripcion" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="edit_ubicacion" class="form-label">Ubicación</label>
+                        <input type="text" class="form-control" id="edit_ubicacion" name="ubicacion">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-primary">Guardar cambios</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function editNodo(nodoId) {
+    // Aquí podrías cargar los datos del nodo y mostrar el modal
+    // Por ahora, redirigir a la página de edición
+    window.location.href = `/enertrack/nodo/${nodoId}/update`;
+}
+
+function removeNodo(nodoId) {
+    if (confirm('¿Estás seguro de que quieres eliminar este nodo? Esta acción no se puede deshacer.')) {
+        const form = document.createElement('form');
+        form.method = 'POST';
+        form.action = `/enertrack/nodo/${nodoId}/remove`;
+        document.body.appendChild(form);
+        form.submit();
+    }
+}
+
+function setAyudaCampoColor() {
+    const isDark = document.body.classList.contains('dark-theme') || document.documentElement.getAttribute('data-theme') === 'dark';
+    document.querySelectorAll('.ayuda-campo').forEach(el => {
+        el.style.color = isDark ? '#fff' : '#6c757d';
+    });
+}
+
+// Ejecutar al cargar
+setAyudaCampoColor();
+
+// Observar cambios de tema
+const observer = new MutationObserver(setAyudaCampoColor);
+observer.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+observer.observe(document.body, { attributes: true, attributeFilter: ['class'] });
+</script>
+{% endblock %} 

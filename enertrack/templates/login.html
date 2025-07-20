@@ -1,0 +1,44 @@
+{% extends "layout.html" %}
+
+{% block body %}
+<div class="container">
+  <div class="row justify-content-center">
+    <div class="col-md-6">
+      <div class="card shadow-lg border-0 mt-5">
+        <div class="card-body p-4">
+          <h1 class="text-center mb-4 text-section">Iniciar Sesión</h1>
+          <form action="{{ url_for('login') }}" method="POST" autocomplete="off">
+            <div class="mb-3">
+              <label for="usuario" class="form-label text-section">Usuario</label>
+              <input type="text" class="form-control" id="usuario" name="usuario" required autofocus>
+            </div>
+            <div class="mb-3">
+              <label for="password" class="form-label text-section">Contraseña</label>
+              <input type="password" class="form-control" id="password" name="password" required>
+            </div>
+            <div class="d-grid gap-2">
+              <button type="submit" class="btn btn-success">Iniciar Sesión</button>
+            </div>
+          </form>
+          <div class="text-center mt-3">
+            <p class="text-section">¿No tienes una cuenta? <a href="{{ url_for('registrar') }}">Regístrate aquí</a></p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// Aplicar tema oscuro inmediatamente si está activo
+// (opcional, ya lo maneja el layout, pero se puede dejar para asegurar)
+document.addEventListener('DOMContentLoaded', function() {
+    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    const storedTheme = localStorage.getItem('theme');
+    if (storedTheme === 'dark' || (!storedTheme && prefersDark)) {
+        document.documentElement.setAttribute('data-theme', 'dark');
+        document.body.classList.add('dark-theme');
+    }
+});
+</script>
+{% endblock %}

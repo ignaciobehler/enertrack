@@ -1,0 +1,8 @@
+Flask
+flask-mysqldb
+gunicorn
+cryptography
+paho-mqtt
+influxdb-client
+aiomqtt
+certifi

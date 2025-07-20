@@ -1,0 +1,32 @@
+services:
+  enertrack:
+    build:
+      context: ./enertrack     # carpeta donde está tu aplicación Flask
+    container_name: enertrack
+    environment:
+      - MYSQL_USER=${MYSQL_USER}
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD}
+      - MYSQL_DB=${MYSQL_DB}
+      - MYSQL_HOST=${MYSQL_HOST}
+      - FLASK_SECRET_KEY=${FLASK_SECRET_KEY}
+      - FERNET_KEY=${FERNET_KEY}
+      - INFLUX_URL=${INFLUX_URL}
+      - INFLUX_TOKEN=${INFLUX_TOKEN}
+      - INFLUX_ORG=${INFLUX_ORG}
+      - INFLUX_BUCKET=${INFLUX_BUCKET}
+      - DOMINIO=${DOMINIO}
+      - PUERTO_MQTTS=${PUERTO_MQTTS}
+      - MQTT_USR=${MQTT_USR}
+      - MQTT_PASS=${MQTT_PASS}
+    ports:
+      - "8006:8006"               # mapea el puerto 8001 al host para probar directamente si quieres
+    restart: unless-stopped
+    networks:
+      - docker_iot-1_default
+
+volumes:
+  portainer_data:
+
+networks:
+  docker_iot-1_default:
+    external: true

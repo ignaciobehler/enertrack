@@ -1,0 +1,855 @@
+{% extends "layout.html" %}
+
+{% block title %}Dashboards de Monitoreo{% endblock %}
+
+{% block body %}
+<div class="container-fluid">
+  <div class="row mb-4">
+    <div class="col-12 d-flex justify-content-end align-items-center">
+      <button class="btn btn-outline-primary btn-sm" onclick="window.location='{{ url_for('index') }}'" title="Volver al Panel Principal">
+        <i class="bi bi-arrow-left"></i> Volver al Panel Principal
+      </button>
+    </div>
+  </div>
+  <!-- Información del nodo seleccionado -->
+  <div class="row mb-4">
+    <div class="col-12 text-center">
+      <div class="card border-primary">
+        <div class="card-body py-3">
+          <h4 class="mb-0 dashboard-title-azul">
+            <i class="bi bi-cpu dashboard-icon-azul me-2"></i>
+            Nodo: <span class="dashboard-text">{{ nodo.esp_id }}</span> - <span class="dashboard-text-muted">{{ nodo.descripcion }}</span>
+          </h4>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Cabecera de sección -->
+  <div class="row mb-4">
+    <div class="col-12">
+      <div class="d-flex align-items-center mb-2">
+        <i class="bi bi-graph-up fs-2 me-2 text-primary"></i>
+        <h1 class="h3 mb-0 dashboard-title-azul">Dashboards de Monitoreo</h1>
+      </div>
+      <p class="dashboard-text-muted">Visualiza los datos de tus dispositivos: tensión, corriente, energía, factor de potencia y frecuencia.</p>
+      <div class="alert alert-info mt-3 dashboard-text">
+        <i class="bi bi-info-circle me-2"></i>
+        <strong>Información importante:</strong> Las vistas previas muestran datos de la <strong>última hora</strong>. 
+        Si no ves datos, puede ser porque no se han enviado mediciones en ese período o porque el dispositivo está desconectado.
+      </div>
+      
+      <!-- Leyenda de estados -->
+      <div class="d-flex justify-content-end mt-3">
+        <div class="d-flex align-items-center gap-3">
+          <small class="dashboard-text-muted">Estados:</small>
+          <div class="d-flex align-items-center gap-2">
+            <span class="badge bg-success px-2 py-1" style="font-size: 0.75rem;">Activo</span>
+            <small class="dashboard-text-muted">Datos en los últimos 30 min</small>
+          </div>
+          <div class="d-flex align-items-center gap-2">
+            <span class="badge bg-danger px-2 py-1" style="font-size: 0.75rem;">Desconectado</span>
+            <small class="dashboard-text-muted">Datos antiguos (>30 min)</small>
+          </div>
+          <div class="d-flex align-items-center gap-2">
+            <span class="badge bg-secondary px-2 py-1" style="font-size: 0.75rem;">Sin datos</span>
+            <small class="dashboard-text-muted">Sin datos disponibles</small>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Enlace al análisis de consumo individual -->
+
+
+  <!-- Grid de dashboards -->
+  <div class="row" id="dashboardsGrid">
+    <!-- Tarjeta Energía (grande, primer renglón) -->
+    <div class="col-12 mb-4">
+      <div class="card h-100 dashboard-card">
+        <div class="card-header d-flex justify-content-between align-items-center">
+          <div class="d-flex align-items-center">
+            <div class="dashboard-icon me-3">
+              <i class="fas fa-bolt-lightning text-danger fa-2x"></i>
+            </div>
+            <div>
+              <h5 class="card-title mb-0 dashboard-title-azul">⚡️ Consumo Energético</h5>
+              <small class="subtitle-section dashboard-text-muted">Gráfico de energía consumida</small>
+            </div>
+          </div>
+          <div class="dashboard-status">
+            <span class="badge" id="estado-energia" style="background:#adb5bd; color:#fff;">
+              <i class="fas fa-circle me-1"></i>
+              Desconectado
+            </span>
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="dashboard-preview">
+            <div class="preview-chart">
+              <canvas id="preview-energia" width="600" height="200"></canvas>
+            </div>
+            <div class="preview-info mt-3">
+              <div class="row text-center">
+                <div class="col-4">
+                  <div class="metric-preview">
+                    <div class="metric-value dashboard-text" id="current-energia">-</div>
+                    <div class="metric-label dashboard-text-muted">Actual</div>
+                  </div>
+                </div>
+                <div class="col-4">
+                  <div class="metric-preview">
+                    <div class="metric-value dashboard-text" id="max-energia">-</div>
+                    <div class="metric-label dashboard-text-muted">Máximo</div>
+                  </div>
+                </div>
+                <div class="col-4">
+                  <div class="metric-preview">
+                    <div class="metric-value dashboard-text" id="min-energia">-</div>
+                    <div class="metric-label dashboard-text-muted">Mínimo</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="card-footer">
+          <div class="d-flex justify-content-between align-items-center">
+            <small class="text-muted" id="last-update-energia">
+              <i class="fas fa-clock me-1"></i>
+              Última actualización: -
+            </small>
+            <a href="{{ url_for('nodo_dashboard_magnitud', nodo_id=nodo.nodo_id, magnitud='consumo') }}" class="btn btn-primary btn-sm">
+              <i class="bi bi-bar-chart-line me-1"></i>
+              Ver Dashboard
+            </a>
+          </div>
+        </div>
+      </div>
+    </div>
+    <!-- Tarjeta Tensión -->
+    <div class="col-lg-6 mb-4">
+      <div class="card h-100 dashboard-card">
+        <div class="card-header d-flex justify-content-between align-items-center">
+          <div class="d-flex align-items-center">
+            <div class="dashboard-icon me-3">
+              <i class="fas fa-bolt text-warning fa-2x"></i>
+            </div>
+            <div>
+              <h5 class="card-title mb-0">🔌 Monitoreo de Tensión</h5>
+              <small class="subtitle-section">Gráfico de tensión a través del tiempo</small>
+            </div>
+          </div>
+          <div class="dashboard-status">
+            <span class="badge" id="estado-tension" style="background:#adb5bd; color:#fff;">
+              <i class="fas fa-circle me-1"></i>
+              Desconectado
+            </span>
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="dashboard-preview">
+            <div class="preview-chart">
+              <canvas id="preview-tension" width="400" height="200"></canvas>
+            </div>
+            <div class="preview-info mt-3">
+              <div class="row text-center">
+                <div class="col-4">
+                  <div class="metric-preview">
+                    <div class="metric-value" id="current-tension">-</div>
+                    <div class="metric-label">Actual</div>
+                  </div>
+                </div>
+                <div class="col-4">
+                  <div class="metric-preview">
+                    <div class="metric-value" id="max-tension">-</div>
+                    <div class="metric-label">Máximo</div>
+                  </div>
+                </div>
+                <div class="col-4">
+                  <div class="metric-preview">
+                    <div class="metric-value" id="min-tension">-</div>
+                    <div class="metric-label">Mínimo</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="card-footer">
+          <div class="d-flex justify-content-between align-items-center">
+            <small class="text-muted" id="last-update-tension">
+              <i class="fas fa-clock me-1"></i>
+              Última actualización: -
+            </small>
+            <a href="{{ url_for('nodo_dashboard_magnitud', nodo_id=nodo.nodo_id, magnitud='tension') }}" class="btn btn-primary btn-sm">
+              <i class="bi bi-bar-chart-line me-1"></i>
+              Ver Dashboard
+            </a>
+          </div>
+        </div>
+      </div>
+    </div>
+    <!-- Tarjeta Corriente -->
+    <div class="col-lg-6 mb-4">
+      <div class="card h-100 dashboard-card">
+        <div class="card-header d-flex justify-content-between align-items-center">
+          <div class="d-flex align-items-center">
+            <div class="dashboard-icon me-3">
+              <i class="fas fa-battery-half text-success fa-2x"></i>
+            </div>
+            <div>
+              <h5 class="card-title mb-0">🔋 Monitoreo de Corriente</h5>
+              <small class="subtitle-section">Gráfico de corriente a través del tiempo</small>
+            </div>
+          </div>
+          <div class="dashboard-status">
+            <span class="badge" id="estado-corriente" style="background:#adb5bd; color:#fff;">
+              <i class="fas fa-circle me-1"></i>
+              Desconectado
+            </span>
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="dashboard-preview">
+            <div class="preview-chart">
+              <canvas id="preview-corriente" width="400" height="200"></canvas>
+            </div>
+            <div class="preview-info mt-3">
+              <div class="row text-center">
+                <div class="col-4">
+                  <div class="metric-preview">
+                    <div class="metric-value" id="current-corriente">-</div>
+                    <div class="metric-label">Actual</div>
+                  </div>
+                </div>
+                <div class="col-4">
+                  <div class="metric-preview">
+                    <div class="metric-value" id="max-corriente">-</div>
+                    <div class="metric-label">Máximo</div>
+                  </div>
+                </div>
+                <div class="col-4">
+                  <div class="metric-preview">
+                    <div class="metric-value" id="min-corriente">-</div>
+                    <div class="metric-label">Mínimo</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="card-footer">
+          <div class="d-flex justify-content-between align-items-center">
+            <small class="text-muted" id="last-update-corriente">
+              <i class="fas fa-clock me-1"></i>
+              Última actualización: -
+            </small>
+            <a href="{{ url_for('nodo_dashboard_magnitud', nodo_id=nodo.nodo_id, magnitud='corriente') }}" class="btn btn-primary btn-sm">
+              <i class="bi bi-bar-chart-line me-1"></i>
+              Ver Dashboard
+            </a>
+          </div>
+        </div>
+      </div>
+    </div>
+    <!-- Tarjeta Factor de Potencia -->
+    <div class="col-lg-6 mb-4">
+      <div class="card h-100 dashboard-card">
+        <div class="card-header d-flex justify-content-between align-items-center">
+          <div class="d-flex align-items-center">
+            <div class="dashboard-icon me-3">
+              <i class="fas fa-bolt text-primary fa-2x"></i>
+            </div>
+            <div>
+              <h5 class="card-title mb-0">📈 Monitoreo de FP</h5>
+              <small class="subtitle-section">Gráfico de factor de potencia</small>
+            </div>
+          </div>
+          <div class="dashboard-status">
+            <span class="badge" id="estado-fp" style="background:#adb5bd; color:#fff;">
+              <i class="fas fa-circle me-1"></i>
+              Desconectado
+            </span>
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="dashboard-preview">
+            <div class="preview-chart">
+              <canvas id="preview-fp" width="400" height="200"></canvas>
+            </div>
+            <div class="preview-info mt-3">
+              <div class="row text-center">
+                <div class="col-4">
+                  <div class="metric-preview">
+                    <div class="metric-value" id="current-fp">-</div>
+                    <div class="metric-label">Actual</div>
+                  </div>
+                </div>
+                <div class="col-4">
+                  <div class="metric-preview">
+                    <div class="metric-value" id="max-fp">-</div>
+                    <div class="metric-label">Máximo</div>
+                  </div>
+                </div>
+                <div class="col-4">
+                  <div class="metric-preview">
+                    <div class="metric-value" id="min-fp">-</div>
+                    <div class="metric-label">Mínimo</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="card-footer">
+          <div class="d-flex justify-content-between align-items-center">
+            <small class="text-muted" id="last-update-fp">
+              <i class="fas fa-clock me-1"></i>
+              Última actualización: -
+            </small>
+            <a href="{{ url_for('nodo_dashboard_magnitud', nodo_id=nodo.nodo_id, magnitud='fp') }}" class="btn btn-primary btn-sm">
+              <i class="bi bi-bar-chart-line me-1"></i>
+              Ver Dashboard
+            </a>
+          </div>
+        </div>
+      </div>
+    </div>
+    <!-- Tarjeta Frecuencia -->
+    <div class="col-lg-6 mb-4">
+      <div class="card h-100 dashboard-card">
+        <div class="card-header d-flex justify-content-between align-items-center">
+          <div class="d-flex align-items-center">
+            <div class="dashboard-icon me-3">
+              <i class="fas fa-wave-square text-info fa-2x"></i>
+            </div>
+            <div>
+              <h5 class="card-title mb-0">🕒 Monitoreo de Frecuencia</h5>
+              <small class="subtitle-section">Gráfico de frecuencia a través del tiempo</small>
+            </div>
+          </div>
+          <div class="dashboard-status">
+            <span class="badge" id="estado-frecuencia" style="background:#adb5bd; color:#fff;">
+              <i class="fas fa-circle me-1"></i>
+              Desconectado
+            </span>
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="dashboard-preview">
+            <div class="preview-chart">
+              <canvas id="preview-frecuencia" width="400" height="200"></canvas>
+            </div>
+            <div class="preview-info mt-3">
+              <div class="row text-center">
+                <div class="col-4">
+                  <div class="metric-preview">
+                    <div class="metric-value" id="current-frecuencia">-</div>
+                    <div class="metric-label">Actual</div>
+                  </div>
+                </div>
+                <div class="col-4">
+                  <div class="metric-preview">
+                    <div class="metric-value" id="max-frecuencia">-</div>
+                    <div class="metric-label">Máximo</div>
+                  </div>
+                </div>
+                <div class="col-4">
+                  <div class="metric-preview">
+                    <div class="metric-value" id="min-frecuencia">-</div>
+                    <div class="metric-label">Mínimo</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="card-footer">
+          <div class="d-flex justify-content-between align-items-center">
+            <small class="text-muted" id="last-update-frecuencia">
+              <i class="fas fa-clock me-1"></i>
+              Última actualización: -
+            </small>
+            <a href="{{ url_for('nodo_dashboard_magnitud', nodo_id=nodo.nodo_id, magnitud='frecuencia') }}" class="btn btn-primary btn-sm">
+              <i class="bi bi-bar-chart-line me-1"></i>
+              Ver Dashboard
+            </a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+const dispositivoSeleccionado = '{{ nodo.esp_id }}';
+const nodoId = {{ nodo.nodo_id }};
+
+function getChartColors() {
+  const isDark = document.body.classList.contains('dark-theme') || document.documentElement.getAttribute('data-theme') === 'dark';
+  return {
+    axis: isDark ? '#f1f5f9' : '#374151',
+    grid: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(30,64,175,0.08)'
+  };
+}
+function updateAllChartsTheme() {
+  if (window.Chart && Chart.instances) {
+    Object.values(Chart.instances).forEach(chart => {
+      const chartColors = getChartColors();
+      if (chart.options.scales) {
+        if (chart.options.scales.x) {
+          chart.options.scales.x.ticks.color = chartColors.axis;
+          chart.options.scales.x.grid.color = chartColors.grid;
+        }
+        if (chart.options.scales.y) {
+          chart.options.scales.y.ticks.color = chartColors.axis;
+          chart.options.scales.y.grid.color = chartColors.grid;
+        }
+        if (chart.options.scales.y1) {
+          chart.options.scales.y1.ticks.color = chartColors.axis;
+          chart.options.scales.y1.grid.color = chartColors.grid;
+        }
+      }
+      chart.update();
+    });
+  }
+}
+document.getElementById('themeToggle').addEventListener('click', function() {
+  setTimeout(updateAllChartsTheme, 300);
+});
+
+// ---------------------- JS de estado de dispositivos ----------------------
+function updateDeviceStatus(magnitud, hasData, lastUpdate) {
+  try {
+    const statusElement = document.getElementById(`estado-${magnitud}`);
+    const lastUpdateElement = document.getElementById(`last-update-${magnitud}`);
+    
+    if (hasData && lastUpdate) {
+      // Verificar si el último dato fue en los últimos 30 minutos
+      const lastUpdateTime = new Date(lastUpdate);
+      const now = new Date();
+      const timeDiff = now - lastUpdateTime;
+      const thirtyMinutes = 30 * 60 * 1000; // 30 minutos en milisegundos
+      
+      if (timeDiff <= thirtyMinutes) {
+        // Activo - datos recientes
+        statusElement.textContent = 'Activo';
+        statusElement.style.background = '#28a745'; // Verde
+        statusElement.style.color = '#fff';
+      } else {
+        // Desconectado - datos antiguos
+        statusElement.textContent = 'Desconectado';
+        statusElement.style.background = '#dc3545'; // Rojo
+        statusElement.style.color = '#fff';
+      }
+      
+      // Formatear fecha y hora del último dato
+      const formattedDate = lastUpdateTime.toLocaleDateString('es-ES', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric'
+      });
+      const formattedTime = lastUpdateTime.toLocaleTimeString('es-ES', {
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit'
+      });
+      
+      lastUpdateElement.innerHTML = `
+        <i class="fas fa-clock me-1"></i>
+        Última actualización: ${formattedDate} ${formattedTime}
+      `;
+    } else {
+      // Sin datos
+      statusElement.textContent = 'Sin datos';
+      statusElement.style.background = '#6c757d'; // Gris
+      statusElement.style.color = '#fff';
+      
+      lastUpdateElement.innerHTML = `
+        <i class="fas fa-clock me-1"></i>
+        Última actualización: Sin datos
+      `;
+    }
+  } catch (error) {
+    console.error(`Error al actualizar el estado de ${magnitud}:`, error);
+  }
+}
+
+// ---------------------- JS de actualización de datos ----------------------
+async function updateData(espId) {
+  try {
+    // Obtener datos reales de la API para cada magnitud
+    const magnitudes = ['consumo', 'tension', 'corriente', 'fp', 'frecuencia'];
+    const data = {};
+    
+    // Obtener datos para cada magnitud
+    for (const magnitud of magnitudes) {
+      try {
+        const response = await fetch(`/enertrack/api/nodo/${nodoId}/magnitud/${magnitud}?rango=60`);
+        const result = await response.json();
+        data[magnitud] = result.datos || [];
+      } catch (error) {
+        console.error(`Error obteniendo datos de ${magnitud}:`, error);
+        data[magnitud] = [];
+      }
+    }
+
+    // Actualizar datos de la tarjeta de consumo
+    const consumoData = data.consumo;
+    if (consumoData && consumoData.length > 0) {
+      const labels = consumoData.map(d => d.tiempo);
+      const valores = consumoData.map(d => d.valor);
+      
+      const consumoChart = new Chart(document.getElementById('preview-energia').getContext('2d'), {
+        type: 'line',
+        data: {
+          labels: labels,
+          datasets: [{
+            label: 'Consumo (kWh)',
+            data: valores,
+            borderColor: '#ef4444',
+            backgroundColor: 'rgba(239,68,68,0.1)',
+            tension: 0.35,
+            fill: true,
+            pointRadius: 0
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: {
+            y: {
+              title: { display: true, text: 'Consumo (kWh)' },
+              grid: { color: getChartColors().grid },
+              ticks: { color: getChartColors().axis }
+            },
+            x: {
+              grid: { color: getChartColors().grid },
+              ticks: { color: getChartColors().axis }
+            }
+          }
+        }
+      });
+      document.getElementById('current-energia').textContent = valores[valores.length - 1].toFixed(2);
+      document.getElementById('max-energia').textContent = Math.max(...valores).toFixed(2);
+      document.getElementById('min-energia').textContent = Math.min(...valores).toFixed(2);
+      
+      // Actualizar estado del dispositivo para consumo
+      try {
+        const response = await fetch(`/enertrack/api/nodo/${nodoId}/magnitud/consumo?rango=30`);
+        const result = await response.json();
+        // Si hay datos en los últimos 30 minutos, está activo
+        if (result.datos && result.datos.length > 0) {
+          updateDeviceStatus('energia', true, result.ultima_fecha);
+        } else {
+          // Verificar si hay datos más antiguos
+          const response24h = await fetch(`/enertrack/api/nodo/${nodoId}/magnitud/consumo?rango=1440`);
+          const result24h = await response24h.json();
+          if (result24h.datos && result24h.datos.length > 0) {
+            updateDeviceStatus('energia', true, result24h.ultima_fecha);
+          } else {
+            updateDeviceStatus('energia', false, null);
+          }
+        }
+      } catch (error) {
+        console.error(`Error obteniendo fecha de consumo:`, error);
+        updateDeviceStatus('energia', false, null);
+      }
+    } else {
+      document.getElementById('preview-energia').innerHTML = `
+        <div class="text-center py-5">
+          <i class="bi bi-exclamation-triangle text-warning fs-1 mb-3"></i>
+          <h6 class="text-warning">Sin datos en la última hora</h6>
+          <p class="text-muted mb-2">No se han recibido mediciones de consumo energético en la última hora.</p>
+          <small class="text-muted">Verifica que el dispositivo esté conectado y enviando datos.</small>
+        </div>`;
+      document.getElementById('current-energia').textContent = '-';
+      document.getElementById('max-energia').textContent = '-';
+      document.getElementById('min-energia').textContent = '-';
+      
+      // Verificar si hay datos más antiguos para mostrar estado correcto
+      try {
+        const response24h = await fetch(`/enertrack/api/nodo/${nodoId}/magnitud/consumo?rango=1440`);
+        const result24h = await response24h.json();
+        if (result24h.datos && result24h.datos.length > 0) {
+          // Hay datos más antiguos, mostrar como desconectado
+          updateDeviceStatus('energia', true, result24h.ultima_fecha);
+        } else {
+          // Realmente no hay datos
+          updateDeviceStatus('energia', false, null);
+        }
+      } catch (error) {
+        console.error(`Error verificando datos antiguos de consumo:`, error);
+        updateDeviceStatus('energia', false, null);
+      }
+    }
+
+    // Actualizar datos de la tarjeta de tensión
+    const tensionData = data.tension;
+    if (tensionData && tensionData.length > 0) {
+      const tensionChart = new Chart(document.getElementById('preview-tension').getContext('2d'), {
+        type: 'line',
+        data: {
+          labels: tensionData.map(d => d.tiempo),
+          datasets: [{
+            label: 'Tensión (V)',
+            data: tensionData.map(d => d.valor),
+            borderColor: '#ffc107',
+            backgroundColor: 'rgba(255,193,7,0.1)',
+            tension: 0.35,
+            fill: true,
+            pointRadius: 0
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: {
+            y: {
+              title: { display: true, text: 'Tensión (V)' },
+              grid: { color: getChartColors().grid },
+              ticks: { color: getChartColors().axis }
+            },
+            x: {
+              grid: { color: getChartColors().grid },
+              ticks: { color: getChartColors().axis }
+            }
+          }
+        }
+      });
+      document.getElementById('current-tension').textContent = tensionData[tensionData.length - 1].valor.toFixed(2);
+      document.getElementById('max-tension').textContent = Math.max(...tensionData.map(d => d.valor)).toFixed(2);
+      document.getElementById('min-tension').textContent = Math.min(...tensionData.map(d => d.valor)).toFixed(2);
+    } else {
+      document.getElementById('preview-tension').innerHTML = `
+        <div class="text-center py-5">
+          <i class="bi bi-exclamation-triangle text-warning fs-1 mb-3"></i>
+          <h6 class="text-warning">Sin datos en la última hora</h6>
+          <p class="text-muted mb-2">No se han recibido mediciones de tensión en la última hora.</p>
+          <small class="text-muted">Verifica que el dispositivo esté conectado y enviando datos.</small>
+        </div>`;
+      document.getElementById('current-tension').textContent = '-';
+      document.getElementById('max-tension').textContent = '-';
+      document.getElementById('min-tension').textContent = '-';
+    }
+
+    // Actualizar datos de la tarjeta de corriente
+    const corrienteData = data.corriente;
+    if (corrienteData && corrienteData.length > 0) {
+      const corrienteChart = new Chart(document.getElementById('preview-corriente').getContext('2d'), {
+        type: 'line',
+        data: {
+          labels: corrienteData.map(d => d.tiempo),
+          datasets: [{
+            label: 'Corriente (A)',
+            data: corrienteData.map(d => d.valor),
+            borderColor: '#22c55e',
+            backgroundColor: 'rgba(34,197,94,0.1)',
+            tension: 0.35,
+            fill: true,
+            pointRadius: 0
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: {
+            y: {
+              title: { display: true, text: 'Corriente (A)' },
+              grid: { color: getChartColors().grid },
+              ticks: { color: getChartColors().axis }
+            },
+            x: {
+              grid: { color: getChartColors().grid },
+              ticks: { color: getChartColors().axis }
+            }
+          }
+        }
+      });
+      document.getElementById('current-corriente').textContent = corrienteData[corrienteData.length - 1].valor.toFixed(2);
+      document.getElementById('max-corriente').textContent = Math.max(...corrienteData.map(d => d.valor)).toFixed(2);
+      document.getElementById('min-corriente').textContent = Math.min(...corrienteData.map(d => d.valor)).toFixed(2);
+    } else {
+      document.getElementById('preview-corriente').innerHTML = `
+        <div class="text-center py-5">
+          <i class="bi bi-exclamation-triangle text-warning fs-1 mb-3"></i>
+          <h6 class="text-warning">Sin datos en la última hora</h6>
+          <p class="text-muted mb-2">No se han recibido mediciones de corriente en la última hora.</p>
+          <small class="text-muted">Verifica que el dispositivo esté conectado y enviando datos.</small>
+        </div>`;
+      document.getElementById('current-corriente').textContent = '-';
+      document.getElementById('max-corriente').textContent = '-';
+      document.getElementById('min-corriente').textContent = '-';
+    }
+
+    // Actualizar datos de la tarjeta de FP
+    const fpData = data.fp;
+    if (fpData && fpData.length > 0) {
+      const fpChart = new Chart(document.getElementById('preview-fp').getContext('2d'), {
+        type: 'line',
+        data: {
+          labels: fpData.map(d => d.tiempo),
+          datasets: [{
+            label: 'Factor de Potencia',
+            data: fpData.map(d => d.valor),
+            borderColor: '#2563eb',
+            backgroundColor: 'rgba(37,99,235,0.1)',
+            tension: 0.35,
+            fill: true,
+            pointRadius: 0
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: {
+            y: {
+              title: { display: true, text: 'Factor de Potencia' },
+              grid: { color: getChartColors().grid },
+              ticks: { color: getChartColors().axis }
+            },
+            x: {
+              grid: { color: getChartColors().grid },
+              ticks: { color: getChartColors().axis }
+            }
+          }
+        }
+      });
+      document.getElementById('current-fp').textContent = fpData[fpData.length - 1].valor.toFixed(2);
+      document.getElementById('max-fp').textContent = Math.max(...fpData.map(d => d.valor)).toFixed(2);
+      document.getElementById('min-fp').textContent = Math.min(...fpData.map(d => d.valor)).toFixed(2);
+    } else {
+      document.getElementById('preview-fp').innerHTML = `
+        <div class="text-center py-5">
+          <i class="bi bi-exclamation-triangle text-warning fs-1 mb-3"></i>
+          <h6 class="text-warning">Sin datos en la última hora</h6>
+          <p class="text-muted mb-2">No se han recibido mediciones de factor de potencia en la última hora.</p>
+          <small class="text-muted">Verifica que el dispositivo esté conectado y enviando datos.</small>
+        </div>`;
+      document.getElementById('current-fp').textContent = '-';
+      document.getElementById('max-fp').textContent = '-';
+      document.getElementById('min-fp').textContent = '-';
+    }
+
+    // Actualizar datos de la tarjeta de Frecuencia
+    const frecuenciaData = data.frecuencia;
+    if (frecuenciaData && frecuenciaData.length > 0) {
+      const frecuenciaChart = new Chart(document.getElementById('preview-frecuencia').getContext('2d'), {
+        type: 'line',
+        data: {
+          labels: frecuenciaData.map(d => d.tiempo),
+          datasets: [{
+            label: 'Frecuencia (Hz)',
+            data: frecuenciaData.map(d => d.valor),
+            borderColor: '#0dcaf0',
+            backgroundColor: 'rgba(13,202,240,0.1)',
+            tension: 0.35,
+            fill: true,
+            pointRadius: 0
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: {
+            y: {
+              title: { display: true, text: 'Frecuencia (Hz)' },
+              grid: { color: getChartColors().grid },
+              ticks: { color: getChartColors().axis }
+            },
+            x: {
+              grid: { color: getChartColors().grid },
+              ticks: { color: getChartColors().axis }
+            }
+          }
+        }
+      });
+      document.getElementById('current-frecuencia').textContent = frecuenciaData[frecuenciaData.length - 1].valor.toFixed(2);
+      document.getElementById('max-frecuencia').textContent = Math.max(...frecuenciaData.map(d => d.valor)).toFixed(2);
+      document.getElementById('min-frecuencia').textContent = Math.min(...frecuenciaData.map(d => d.valor)).toFixed(2);
+    } else {
+      document.getElementById('preview-frecuencia').innerHTML = `
+        <div class="text-center py-5">
+          <i class="bi bi-exclamation-triangle text-warning fs-1 mb-3"></i>
+          <h6 class="text-warning">Sin datos en la última hora</h6>
+          <p class="text-muted mb-2">No se han recibido mediciones de frecuencia en la última hora.</p>
+          <small class="text-muted">Verifica que el dispositivo esté conectado y enviando datos.</small>
+        </div>`;
+      document.getElementById('current-frecuencia').textContent = '-';
+      document.getElementById('max-frecuencia').textContent = '-';
+      document.getElementById('min-frecuencia').textContent = '-';
+    }
+
+    // Actualizar estados de todos los dispositivos basado en los datos obtenidos
+    const magnitudesToCheck = ['tension', 'corriente', 'fp', 'frecuencia'];
+    
+    for (const magnitud of magnitudesToCheck) {
+      const magnitudData = data[magnitud];
+      if (magnitudData && magnitudData.length > 0) {
+        // Si hay datos en la última hora, verificar si son recientes (últimos 30 min)
+        try {
+          const response = await fetch(`/enertrack/api/nodo/${nodoId}/magnitud/${magnitud}?rango=30`);
+          const result = await response.json();
+          if (result.datos && result.datos.length > 0) {
+            // Datos recientes (últimos 30 min)
+            updateDeviceStatus(magnitud, true, result.ultima_fecha);
+          } else {
+            // Datos antiguos (más de 30 min)
+            const response24h = await fetch(`/enertrack/api/nodo/${nodoId}/magnitud/${magnitud}?rango=1440`);
+            const result24h = await response24h.json();
+            if (result24h.datos && result24h.datos.length > 0) {
+              updateDeviceStatus(magnitud, true, result24h.ultima_fecha);
+            } else {
+              updateDeviceStatus(magnitud, false, null);
+            }
+          }
+        } catch (error) {
+          console.error(`Error obteniendo fecha de ${magnitud}:`, error);
+          updateDeviceStatus(magnitud, false, null);
+        }
+      } else {
+        // Si no hay datos en la última hora, verificar si hay datos más antiguos
+        try {
+          const response = await fetch(`/enertrack/api/nodo/${nodoId}/magnitud/${magnitud}?rango=1440`); // 24 horas
+          const result = await response.json();
+          if (result.datos && result.datos.length > 0) {
+            // Hay datos más antiguos, usar la fecha real del último dato
+            updateDeviceStatus(magnitud, true, result.ultima_fecha);
+          } else {
+            updateDeviceStatus(magnitud, false, null);
+          }
+        } catch (error) {
+          console.error(`Error verificando datos antiguos de ${magnitud}:`, error);
+          updateDeviceStatus(magnitud, false, null);
+        }
+      }
+    }
+
+  } catch (error) {
+    console.error("Error al actualizar los datos del dispositivo:", error);
+    // Manejar errores de red o de servidor
+  }
+}
+
+// ---------------------- JS de inicialización ----------------------
+document.addEventListener('DOMContentLoaded', () => {
+  // Actualizar datos del dispositivo seleccionado (esto también actualizará los estados)
+  updateData(dispositivoSeleccionado);
+
+  // Configurar intervalo de actualización (por ejemplo, cada 5 segundos)
+  setInterval(() => {
+    updateData(dispositivoSeleccionado);
+  }, 5000); // 5 segundos
+});
+</script>
+{% endblock %}

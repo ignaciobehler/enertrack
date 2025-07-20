@@ -1,0 +1,406 @@
+{% extends "layout.html" %}
+
+{% block title %}Análisis de Consumo Global{% endblock %}
+
+{% block body %}
+<div class="container">
+    <div class="dashboard-container" style="background: var(--color-bg);">
+        <!-- Header del Dashboard -->
+        <div class="dashboard-header" style="background: var(--color-header); position: relative;">
+            <div class="container-fluid">
+                <div class="row align-items-center">
+                    <div class="col-md-12 d-flex justify-content-between align-items-center">
+                        <div>
+                            <h1 class="h4 mb-0 dashboard-title-azul">
+                                <i class="fas fa-chart-pie text-warning me-2"></i>
+                                Análisis de Consumo Global
+                            </h1>
+                            <p class="text-muted mb-0 dashboard-text-muted">Consumo total de todos tus nodos</p>
+                        </div>
+                        <div class="d-flex align-items-center">
+                            <button class="btn btn-outline-primary btn-sm me-2" onclick="window.location='{{ url_for('index') }}'" title="Volver">
+                                <i class="bi bi-arrow-left"></i> Volver
+                            </button>
+                            <div class="dropdown">
+                                <button class="btn btn-outline-secondary btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown">
+                                    <i class="fas fa-cog"></i>
+                                    <span class="ms-1">Acciones</span>
+                                </button>
+                                <ul class="dropdown-menu">
+                                    <li><a class="dropdown-item" href="#" onclick="window.print(); return false;">
+                                        <i class="fas fa-print me-2"></i>Imprimir
+                                    </a></li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Información de nodos -->
+        <div class="container-fluid mt-3 mb-3">
+            <div class="row">
+                <div class="col-12">
+                    <div class="alert alert-info py-2 mb-0 dashboard-text">
+                        <strong class="dashboard-text">Nodos activos:</strong> <span class="dashboard-text">{{ nodos|length }}</span>
+                        {% if nodos|length > 0 %}
+                            (<span class="dashboard-text">{% for nodo in nodos %}{{ nodo.esp_id }}{% if not loop.last %}, {% endif %}{% endfor %}</span>)
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Controles de filtro -->
+        <div class="container-fluid mb-4">
+            <div class="row">
+                <div class="col-md-6">
+                    <div class="d-flex align-items-center">
+                        <label for="periodoSelect" class="form-label me-2 mb-0 dashboard-text">Período:</label>
+                        <select id="periodoSelect" class="form-select form-select-sm w-auto">
+                            <option value="hora">Por Hora</option>
+                            <option value="dia">Por Día</option>
+                            <option value="mes">Por Mes</option>
+                            <option value="año">Por Año</option>
+                        </select>
+                    </div>
+                </div>
+                <!-- Eliminado el selector de rango -->
+            </div>
+        </div>
+
+        <!-- Contenido del Dashboard -->
+        <div class="dashboard-content">
+            <div class="container-fluid">
+                <!-- Métricas principales -->
+                <div class="row mb-4">
+                    <div class="col-md-3">
+                        <div class="metric-card">
+                            <div class="metric-icon">
+                                <span style="font-size:1.5em;">⚡</span>
+                            </div>
+                            <div class="metric-content">
+                                <div class="metric-value dashboard-text" id="consumoTotal">-</div>
+                                <div class="metric-label dashboard-text-muted">Consumo Total</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="metric-card">
+                            <div class="metric-icon">
+                                <span style="font-size:1.5em;">📊</span>
+                            </div>
+                            <div class="metric-content">
+                                <div class="metric-value dashboard-text" id="consumoPromedio">-</div>
+                                <div class="metric-label dashboard-text-muted">Promedio</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="metric-card">
+                            <div class="metric-icon">
+                                <span style="font-size:1.5em;">⬆️</span>
+                            </div>
+                            <div class="metric-content">
+                                <div class="metric-value dashboard-text" id="consumoMaximo">-</div>
+                                <div class="metric-label dashboard-text-muted">Máximo</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="metric-card">
+                            <div class="metric-icon">
+                                <span style="font-size:1.5em;">⬇️</span>
+                            </div>
+                            <div class="metric-content">
+                                <div class="metric-value dashboard-text" id="consumoMinimo">-</div>
+                                <div class="metric-label dashboard-text-muted">Mínimo</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Gráfico principal -->
+                <div class="row mb-4">
+                    <div class="col-12">
+                        <div class="card" style="background: var(--color-card);">
+                            <div class="card-header" style="background: var(--color-header);">
+                                <h5 class="card-title mb-0">
+                                    <i class="fas fa-chart-line me-2"></i>
+                                    Consumo Global por <span id="periodoLabel">Hora</span>
+                                    <span id="fechaLabel" class="text-muted ms-2"></span>
+                                </h5>
+                            </div>
+                            <div class="card-body chartjs-bg">
+                                <div class="chart-container" style="box-shadow: 0 4px 16px rgba(33,37,41,0.10); border-radius: 12px; min-height: 400px;">
+                                    <canvas id="consumoChart" width="1000" height="400"></canvas>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Tabla de datos -->
+                <div class="row">
+                    <div class="col-12">
+                        <div class="card">
+                            <div class="card-header">
+                                <h5 class="card-title mb-0">
+                                    <i class="fas fa-table me-2"></i>
+                                    Detalle de Consumo Global
+                                </h5>
+                            </div>
+                            <div class="card-body">
+                                <div class="table-responsive">
+                                    <table class="table table-hover">
+                                        <thead>
+                                            <tr>
+                                                <th>Fecha</th>
+                                                <th id="columnaPeriodo">Hora</th>
+                                                <th>Consumo Total (kWh)</th>
+                                                <th>Tendencia</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="tablaConsumo">
+                                            <!-- Se llenará por JS -->
+                                        </tbody>
+                                    </table>
+                                    <nav>
+                                        <ul class="pagination justify-content-center" id="paginacionTablaConsumo"></ul>
+                                    </nav>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+let chart;
+
+function getChartColors() {
+  const isDark = document.body.classList.contains('dark-theme') || document.documentElement.getAttribute('data-theme') === 'dark';
+  return {
+    axis: isDark ? '#f1f5f9' : '#374151',
+    grid: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(30,64,175,0.08)'
+  };
+}
+function updateAllChartsTheme() {
+  if (window.Chart && Chart.instances) {
+    Object.values(Chart.instances).forEach(chart => {
+      const chartColors = getChartColors();
+      if (chart.options.scales) {
+        if (chart.options.scales.x) {
+          chart.options.scales.x.ticks.color = chartColors.axis;
+          chart.options.scales.x.grid.color = chartColors.grid;
+        }
+        if (chart.options.scales.y) {
+          chart.options.scales.y.ticks.color = chartColors.axis;
+          chart.options.scales.y.grid.color = chartColors.grid;
+        }
+        if (chart.options.scales.y1) {
+          chart.options.scales.y1.ticks.color = chartColors.axis;
+          chart.options.scales.y1.grid.color = chartColors.grid;
+        }
+      }
+      chart.update();
+    });
+  }
+}
+document.getElementById('themeToggle').addEventListener('click', function() {
+  setTimeout(updateAllChartsTheme, 300);
+});
+
+function renderChart(labels, data, unidad) {
+    const ctx = document.getElementById('consumoChart').getContext('2d');
+    if (chart) chart.destroy();
+    
+    const chartColors = getChartColors();
+    chart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: labels,
+            datasets: [{
+                data: data,
+                borderColor: '#ffc107',
+                backgroundColor: 'rgba(255,193,7,0.3)',
+                borderWidth: 2,
+                borderRadius: 4,
+                borderSkipped: false,
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    callbacks: {
+                        title: function(context) {
+                            return context[0].label;
+                        },
+                        label: function(context) {
+                            return 'Consumo: ' + context.parsed.y + ' ' + unidad;
+                        }
+                    }
+                }
+            },
+            scales: {
+                y: {
+                    title: { display: true, text: 'Consumo (' + unidad + ')' },
+                    grid: { color: chartColors.grid },
+                    ticks: { color: chartColors.axis }
+                },
+                x: {
+                    grid: { color: chartColors.grid },
+                    ticks: { color: chartColors.axis }
+                }
+            }
+        }
+    });
+}
+
+function renderTable(labels, valores, unidad, pagina = 1, porPagina = 20) {
+  const tbody = document.getElementById('tablaConsumo');
+  tbody.innerHTML = '';
+  if (!labels || labels.length === 0) {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td colspan="4" class="text-center text-muted">No hay datos disponibles</td>`;
+    tbody.appendChild(tr);
+    document.getElementById('paginacionTablaConsumo').innerHTML = '';
+    return;
+  }
+  // Paginación
+  const totalPaginas = Math.ceil(labels.length / porPagina);
+  const inicio = (pagina - 1) * porPagina;
+  const fin = inicio + porPagina;
+  const labelsPagina = labels.slice(inicio, fin);
+  const valoresPagina = valores.slice(inicio, fin);
+  labelsPagina.forEach((label, index) => {
+    // Suponiendo que label es fecha-hora o hay un array paralelo de fechas
+    let fecha = '-';
+    let hora = '-';
+    if (typeof label === 'string' && label.length > 10 && label.includes('T')) {
+      const d = new Date(label);
+      fecha = d.toLocaleDateString('es-ES');
+      hora = d.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    } else {
+      hora = label;
+    }
+    const valor = valoresPagina[index];
+    const realIndex = inicio + index;
+    let tendencia = "-";
+    let tendenciaClass = "";
+    if (realIndex > 0) {
+      const diff = valores[realIndex] - valores[realIndex-1];
+      if (diff > 0) {
+        tendencia = "↗️ Aumentó";
+        tendenciaClass = "text-danger";
+      } else if (diff < 0) {
+        tendencia = "↘️ Disminuyó";
+        tendenciaClass = "text-success";
+      } else {
+        tendencia = "→ Estable";
+        tendenciaClass = "text-muted";
+      }
+    }
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${fecha}</td><td>${hora}</td><td><strong>${valor.toFixed(2)} ${unidad}</strong></td><td><span class="${tendenciaClass}">${tendencia}</span></td>
+    `;
+    tbody.appendChild(tr);
+  });
+  // Renderizar paginación
+  const paginacion = document.getElementById('paginacionTablaConsumo');
+  paginacion.innerHTML = '';
+  if (totalPaginas > 1) {
+    for (let i = 1; i <= totalPaginas; i++) {
+      const li = document.createElement('li');
+      li.className = 'page-item' + (i === pagina ? ' active' : '');
+      const a = document.createElement('a');
+      a.className = 'page-link';
+      a.href = '#';
+      a.textContent = i;
+      a.onclick = (e) => { e.preventDefault(); renderTable(labels, valores, unidad, i, porPagina); };
+      li.appendChild(a);
+      paginacion.appendChild(li);
+    }
+  }
+}
+
+function updateMetrics(estadisticas) {
+    document.getElementById('consumoTotal').textContent = estadisticas.total;
+    document.getElementById('consumoPromedio').textContent = estadisticas.promedio;
+    document.getElementById('consumoMaximo').textContent = estadisticas.maximo;
+    document.getElementById('consumoMinimo').textContent = estadisticas.minimo;
+}
+
+function updatePeriodoLabel(periodo) {
+    const labels = {
+        'hora': 'Hora',
+        'dia': 'Día',
+        'mes': 'Mes',
+        'año': 'Año'
+    };
+    document.getElementById('periodoLabel').textContent = labels[periodo] || 'Período';
+    document.getElementById('columnaPeriodo').textContent = labels[periodo] || 'Período';
+}
+
+function updateFechaLabel(fecha) {
+    const fechaElement = document.getElementById('fechaLabel');
+    if (fecha) {
+        fechaElement.textContent = `(${fecha})`;
+    } else {
+        fechaElement.textContent = '';
+    }
+}
+
+function fetchAndRender() {
+    const periodo = document.getElementById('periodoSelect').value;
+    
+    // Llamar SIEMPRE a la API real
+    fetch(`/enertrack/api/consumo/global?periodo=${periodo}`)
+        .then(r => {
+            if (!r.ok) {
+                throw new Error(`HTTP error! status: ${r.status}`);
+            }
+            return r.json();
+        })
+        .then(data => {
+            if (data.error || !data.labels || !data.valores || data.labels.length === 0 || data.valores.length === 0) {
+                renderChart([], [], 'kWh');
+                renderTable([], [], 'kWh', 1, 20); // Cambiado a 1 y 20 para la tabla
+                updateMetrics({ total: '-', promedio: '-', maximo: '-', minimo: '-' });
+                updatePeriodoLabel(periodo);
+                return;
+            }
+            renderChart(data.labels, data.valores, data.unidad);
+            renderTable(data.labels, data.valores, data.unidad, 1, 20); // Cambiado a 1 y 20 para la tabla
+            updateMetrics(data.estadisticas);
+            updatePeriodoLabel(periodo);
+            updateFechaLabel(data.fecha);
+        })
+        .catch(error => {
+            renderChart([], [], 'kWh');
+            renderTable([], [], 'kWh', 1, 20); // Cambiado a 1 y 20 para la tabla
+            updateMetrics({ total: '-', promedio: '-', maximo: '-', minimo: '-' });
+            updatePeriodoLabel(periodo);
+            console.error('Error fetching API data:', error);
+        });
+}
+
+// Event listeners
+document.getElementById('periodoSelect').addEventListener('change', fetchAndRender);
+// document.getElementById('rangoSelect').addEventListener('change', fetchAndRender); // Eliminado
+
+// Inicializar
+fetchAndRender();
+</script>
+{% endblock %} 
