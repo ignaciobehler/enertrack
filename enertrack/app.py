@@ -839,20 +839,29 @@ def api_consumo_global():
     esp_ids = [n["esp_id"] for n in nodos]
     periodo = request.args.get('periodo', 'hora')
     now = datetime.now()
+    # Definir filtro OR para múltiples esp_ids (debe estar antes de cualquier if)
+    esp_filter = " or ".join([f'r["esp_id"] == "{esp_id}"' for esp_id in esp_ids])
     # Definir rango y ventana de agrupación según periodo
     if periodo == 'hora':
-        # Para mostrar el día actual desde 00:00 hasta 23:59
-        inicio_dia = now.replace(hour=0, minute=0, second=0, microsecond=0)
-        fin_dia = now.replace(hour=23, minute=59, second=59, microsecond=999999)
-        # Usar formato correcto para InfluxDB
-        rango = f"-{int((now - inicio_dia).total_seconds())}s"
+        # Leer parámetro de fecha (YYYY-MM-DD)
+        fecha_str = request.args.get('fecha')
+        if fecha_str:
+            try:
+                fecha = datetime.strptime(fecha_str, '%Y-%m-%d')
+            except Exception:
+                fecha = now
+        else:
+            fecha = now
+        inicio_dia = fecha.replace(hour=0, minute=0, second=0, microsecond=0)
+        fin_dia = fecha.replace(hour=23, minute=59, second=59, microsecond=999999)
+        # Usar rango absoluto en UTC para InfluxDB
+        rango_start = inicio_dia.isoformat() + 'Z'
+        rango_stop = fin_dia.isoformat() + 'Z'
         group = '1h'
         labels_fmt = '%H:00'
         num_periodos = 24
-        # Generar las 24 horas del día actual (00:00 a 23:00)
         periodos_labels = [f"{i:02d}:00" for i in range(24)]
-        # Agregar información de la fecha para el frontend
-        fecha_dia = now.strftime('%d/%m/%Y')
+        fecha_dia = fecha.strftime('%d/%m/%Y')
     elif periodo == 'dia':
         rango = '-7d'
         group = '1d'
@@ -889,18 +898,29 @@ def api_consumo_global():
     
     try:
         # Crear filtro OR para múltiples esp_ids
-        esp_filter = " or ".join([f'r["esp_id"] == "{esp_id}"' for esp_id in esp_ids])
+        # esp_filter = " or ".join([f'r["esp_id"] == "{esp_id}"' for esp_id in esp_ids]) # Moved outside
         
         # Consulta: obtener datos raw y procesarlos en Python (igual que api_nodo_magnitud)
-        flux = f'''
-            from(bucket: "{influx_bucket}")
-              |> range(start: {rango})
-              |> filter(fn: (r) => r["_measurement"] == "consumo")
-              |> filter(fn: (r) => r["_field"] == "valor")
-              |> filter(fn: (r) => {esp_filter})
-              |> group()
-              |> sort(columns: ["_time"])
-        '''
+        if periodo == 'hora':
+            flux = f'''
+                from(bucket: "{influx_bucket}")
+                  |> range(start: {rango_start}, stop: {rango_stop})
+                  |> filter(fn: (r) => r["_measurement"] == "consumo")
+                  |> filter(fn: (r) => r["_field"] == "valor")
+                  |> filter(fn: (r) => {esp_filter})
+                  |> group()
+                  |> sort(columns: ["_time"])
+            '''
+        else:
+            flux = f'''
+                from(bucket: "{influx_bucket}")
+                  |> range(start: {rango})
+                  |> filter(fn: (r) => r["_measurement"] == "consumo")
+                  |> filter(fn: (r) => r["_field"] == "valor")
+                  |> filter(fn: (r) => {esp_filter})
+                  |> group()
+                  |> sort(columns: ["_time"])
+            '''
         
         tables = list(influx_client.query_api().query(flux))
         consumo_por_periodo = {label: 0.0 for label in periodos_labels}
@@ -911,7 +931,10 @@ def api_consumo_global():
         # === DIAGNÓSTICO DETALLADO ===
         logger.info("🔍 === INICIO DIAGNÓSTICO CONSUMO GLOBAL ===")
         logger.info(f"📊 Nodos consultados: {esp_ids}")
-        logger.info(f"📊 Rango: {rango}, Agrupación: {group}")
+        if periodo == 'hora':
+            logger.info(f"📊 Rango: {rango_start} - {rango_stop}, Agrupación: {group}")
+        else:
+            logger.info(f"📊 Rango: {rango}, Agrupación: {group}")
         logger.info(f"📊 Periodos labels: {periodos_labels}")
         logger.info(f"📊 Query Flux: {flux}")
         
@@ -1000,15 +1023,24 @@ def api_consumo_global():
         total_individuales = 0.0
         
         for esp_id in esp_ids:
-            # Consulta individual (igual que api_nodo_magnitud)
-            flux_individual = f'''
-                from(bucket: "{influx_bucket}")
-                  |> range(start: {rango})
-                  |> filter(fn: (r) => r._measurement == "consumo" and r.esp_id == "{esp_id}")
-                  |> filter(fn: (r) => r._field == "valor")
-                  |> group()
-                  |> sort(columns: ["_time"])
-            '''
+            if periodo == 'hora':
+                flux_individual = f'''
+                    from(bucket: "{influx_bucket}")
+                      |> range(start: {rango_start}, stop: {rango_stop})
+                      |> filter(fn: (r) => r._measurement == "consumo" and r.esp_id == "{esp_id}")
+                      |> filter(fn: (r) => r._field == "valor")
+                      |> group()
+                      |> sort(columns: ["_time"])
+                '''
+            else:
+                flux_individual = f'''
+                    from(bucket: "{influx_bucket}")
+                      |> range(start: {rango})
+                      |> filter(fn: (r) => r._measurement == "consumo" and r.esp_id == "{esp_id}")
+                      |> filter(fn: (r) => r._field == "valor")
+                      |> group()
+                      |> sort(columns: ["_time"])
+                '''
             
             logger.info(f"🔍 === CONSULTA INDIVIDUAL NODO {esp_id} ===")
             logger.info(f"📊 Query: {flux_individual}")

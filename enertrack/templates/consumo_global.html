@@ -64,6 +64,7 @@
                             <option value="mes">Por Mes</option>
                             <option value="año">Por Año</option>
                         </select>
+                        <input type="date" id="fechaInput" class="form-control form-control-sm ms-3" style="display:none; width:auto; min-width:150px;" />
                     </div>
                 </div>
                 <!-- Eliminado el selector de rango -->
@@ -362,11 +363,43 @@ function updateFechaLabel(fecha) {
     }
 }
 
+// Función para obtener la fecha de hoy en formato YYYY-MM-DD
+function getHoyISO() {
+    const hoy = new Date();
+    return hoy.toISOString().slice(0,10);
+}
+
+// Mostrar el input de fecha si el período es 'hora' (también al cargar)
+function mostrarFechaSiHora() {
+    const periodo = document.getElementById('periodoSelect').value;
+    const fechaInput = document.getElementById('fechaInput');
+    if (periodo === 'hora') {
+        fechaInput.style.display = 'block';
+        if (!fechaInput.value) {
+            fechaInput.value = getHoyISO();
+        }
+    } else {
+        fechaInput.style.display = 'none';
+    }
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    mostrarFechaSiHora();
+    document.getElementById('fechaInput').addEventListener('change', fetchAndRender);
+    document.getElementById('periodoSelect').addEventListener('change', function() {
+        mostrarFechaSiHora();
+        fetchAndRender();
+    });
+});
+
 function fetchAndRender() {
     const periodo = document.getElementById('periodoSelect').value;
-    
-    // Llamar SIEMPRE a la API real
-    fetch(`/enertrack/api/consumo/global?periodo=${periodo}`)
+    const fechaInput = document.getElementById('fechaInput');
+    let url = `/enertrack/api/consumo/global?periodo=${periodo}`;
+    if (periodo === 'hora' && fechaInput.value) {
+        url += `&fecha=${fechaInput.value}`;
+    }
+    fetch(url)
         .then(r => {
             if (!r.ok) {
                 throw new Error(`HTTP error! status: ${r.status}`);
@@ -374,32 +407,46 @@ function fetchAndRender() {
             return r.json();
         })
         .then(data => {
-            if (data.error || !data.labels || !data.valores || data.labels.length === 0 || data.valores.length === 0) {
-                renderChart([], [], 'kWh');
-                renderTable([], [], 'kWh', 1, 20); // Cambiado a 1 y 20 para la tabla
+            let labels = data.labels || [];
+            let valores = data.valores || [];
+            if (periodo === 'hora') {
+                labels = Array.from({length: 24}, (_, i) => `${i.toString().padStart(2, '0')}:00`);
+                if (!data.valores || data.valores.length !== 24) {
+                    valores = Array(24).fill(0);
+                    if (data.valores && data.valores.length > 0) {
+                        for (let i = 0; i < data.valores.length; i++) {
+                            valores[i] = data.valores[i];
+                        }
+                    }
+                }
+            } // Para otros períodos, usar los labels y valores tal cual
+            if (data.error || labels.length === 0 || valores.length === 0) {
+                renderChart(labels, valores, 'kWh');
+                renderTable(labels, valores, 'kWh', 1, 20);
                 updateMetrics({ total: '-', promedio: '-', maximo: '-', minimo: '-' });
                 updatePeriodoLabel(periodo);
                 return;
             }
-            renderChart(data.labels, data.valores, data.unidad);
-            renderTable(data.labels, data.valores, data.unidad, 1, 20); // Cambiado a 1 y 20 para la tabla
+            renderChart(labels, valores, data.unidad);
+            renderTable(labels, valores, data.unidad, 1, 20);
             updateMetrics(data.estadisticas);
             updatePeriodoLabel(periodo);
             updateFechaLabel(data.fecha);
         })
         .catch(error => {
-            renderChart([], [], 'kWh');
-            renderTable([], [], 'kWh', 1, 20); // Cambiado a 1 y 20 para la tabla
+            let labels = [];
+            let valores = [];
+            if (document.getElementById('periodoSelect').value === 'hora') {
+                labels = Array.from({length: 24}, (_, i) => `${i.toString().padStart(2, '0')}:00`);
+                valores = Array(24).fill(0);
+            }
+            renderChart(labels, valores, 'kWh');
+            renderTable(labels, valores, 'kWh', 1, 20);
             updateMetrics({ total: '-', promedio: '-', maximo: '-', minimo: '-' });
             updatePeriodoLabel(periodo);
             console.error('Error fetching API data:', error);
         });
 }
-
-// Event listeners
-document.getElementById('periodoSelect').addEventListener('change', fetchAndRender);
-// document.getElementById('rangoSelect').addEventListener('change', fetchAndRender); // Eliminado
-
 // Inicializar
 fetchAndRender();
 </script>
