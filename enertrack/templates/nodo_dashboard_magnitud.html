@@ -394,7 +394,11 @@ function renderChart(labels, data) {
         backgroundColor: color.bg,
         tension: .35,
         fill: true,
-        pointRadius: 0
+        pointRadius: 4,
+        pointHoverRadius: 6,
+        pointBackgroundColor: color.border,
+        pointBorderColor: "#fff",
+        pointBorderWidth: 2
       }]
     },
     options: {
