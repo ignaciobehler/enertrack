@@ -389,6 +389,7 @@
 <script>
 const dispositivoSeleccionado = '{{ nodo.esp_id }}';
 const nodoId = {{ nodo.nodo_id }};
+console.log('DASHBOARDS INIT', { nodoId, dispositivoSeleccionado });
 
 function getChartColors() {
   const isDark = document.body.classList.contains('dark-theme') || document.documentElement.getAttribute('data-theme') === 'dark';
@@ -419,9 +420,14 @@ function updateAllChartsTheme() {
     });
   }
 }
-document.getElementById('themeToggle').addEventListener('click', function() {
-  setTimeout(updateAllChartsTheme, 300);
-});
+
+// --- FIX: themeToggle event listener solo si existe ---
+var themeToggle = document.getElementById('themeToggle');
+if (themeToggle) {
+  themeToggle.addEventListener('click', function() {
+    setTimeout(updateAllChartsTheme, 300);
+  });
+}
 
 // ---------------------- JS de estado de dispositivos ----------------------
 function updateDeviceStatus(magnitud, hasData, lastUpdate) {
@@ -840,6 +846,161 @@ async function updateData(espId) {
     // Manejar errores de red o de servidor
   }
 }
+
+// --- Gestión AJAX de umbral de consumo ---
+function mostrarFeedback(msg, success=true) {
+  feedbackDiv.className = 'alert ' + (success ? 'alert-success' : 'alert-danger');
+  feedbackDiv.textContent = msg;
+  feedbackDiv.style.display = 'block';
+  setTimeout(() => { feedbackDiv.style.display = 'none'; }, 2500);
+}
+
+function cargarUmbral() {
+  fetch(`/enertrack/api/umbral/${nodoId}`)
+    .then(r => r.json())
+    .then(data => {
+      if (data.ventana_min && data.umbral_kWh) {
+        ventanaMinSel.value = data.ventana_min;
+        umbralKWhInput.value = data.umbral_kWh;
+        btnEliminarUmbral.style.display = '';
+      } else {
+        ventanaMinSel.value = '15';
+        umbralKWhInput.value = '';
+        btnEliminarUmbral.style.display = 'none';
+      }
+    });
+}
+
+// --- FIX: Proteger todos los addEventListener para evitar errores de null ---
+var umbralForm = document.getElementById('umbralForm');
+var ventanaMinSel = document.getElementById('ventana_min');
+var umbralKWhInput = document.getElementById('umbral_kWh');
+var btnEliminarUmbral = document.getElementById('btnEliminarUmbral');
+var feedbackDiv = document.getElementById('umbralFeedback');
+
+if (umbralForm) {
+  umbralForm.addEventListener('submit', function(e) {
+    e.preventDefault();
+    const ventana_min = ventanaMinSel.value;
+    const umbral_kWh = umbralKWhInput.value;
+    fetch(`/enertrack/api/umbral/${nodoId}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ventana_min, umbral_kWh })
+    })
+    .then(r => r.json())
+    .then(data => {
+      if (data.success) {
+        mostrarFeedback('Umbral guardado correctamente.', true);
+        cargarUmbral();
+      } else {
+        mostrarFeedback('Error al guardar el umbral.', false);
+      }
+    })
+    .catch(() => mostrarFeedback('Error de red al guardar el umbral.', false));
+  });
+}
+
+if (btnEliminarUmbral) {
+  btnEliminarUmbral.addEventListener('click', function() {
+    if (!confirm('¿Eliminar el umbral de este nodo?')) return;
+    fetch(`/enertrack/api/umbral/${nodoId}`, { method: 'DELETE' })
+      .then(r => r.json())
+      .then(data => {
+        if (data.success) {
+          mostrarFeedback('Umbral eliminado.', true);
+          cargarUmbral();
+        } else {
+          mostrarFeedback('Error al eliminar el umbral.', false);
+        }
+      })
+      .catch(() => mostrarFeedback('Error de red al eliminar el umbral.', false));
+  });
+}
+
+document.addEventListener('DOMContentLoaded', cargarUmbral);
+
+// --- BLOQUE UNIFICADO PARA ACTUALIZAR TODAS LAS MAGNITUDES EN DASHBOARDS DE MONITOREO ---
+document.addEventListener('DOMContentLoaded', async () => {
+  try {
+    console.log('DASHBOARDS: Haciendo fetch a /api/nodo/' + nodoId + '/latest');
+    const response = await fetch(`/api/nodo/${nodoId}/latest`);
+    const data = await response.json();
+    console.log('DASHBOARDS: Respuesta de /api/nodo/' + nodoId + '/latest', data);
+    // Magnitudes a mostrar
+    const magnitudes = [
+      { key: 'consumo', label: 'Consumo (kWh)', color: '#ef4444', bg: 'rgba(239,68,68,0.1)', chart: 'preview-energia', estado: 'estado-energia', last: 'last-update-energia', current: 'current-energia', max: 'max-energia', min: 'min-energia' },
+      { key: 'tension', label: 'Tensión (V)', color: '#ffc107', bg: 'rgba(255,193,7,0.1)', chart: 'preview-tension', estado: 'estado-tension', last: 'last-update-tension', current: 'current-tension', max: 'max-tension', min: 'min-tension' },
+      { key: 'corriente', label: 'Corriente (A)', color: '#22c55e', bg: 'rgba(34,197,94,0.1)', chart: 'preview-corriente', estado: 'estado-corriente', last: 'last-update-corriente', current: 'current-corriente', max: 'max-corriente', min: 'min-corriente' },
+      { key: 'fp', label: 'Factor de Potencia', color: '#2563eb', bg: 'rgba(37,99,235,0.1)', chart: 'preview-fp', estado: 'estado-fp', last: 'last-update-fp', current: 'current-fp', max: 'max-fp', min: 'min-fp' },
+      { key: 'frecuencia', label: 'Frecuencia (Hz)', color: '#0dcaf0', bg: 'rgba(13,202,240,0.1)', chart: 'preview-frecuencia', estado: 'estado-frecuencia', last: 'last-update-frecuencia', current: 'current-frecuencia', max: 'max-frecuencia', min: 'min-frecuencia' }
+    ];
+    for (const mag of magnitudes) {
+      // Estado y última actualización (todos usan el mismo estado/ultima_actualizacion del nodo)
+      const statusElement = document.getElementById(mag.estado);
+      const lastUpdateElement = document.getElementById(mag.last);
+      if (data.estado === 'activo') {
+        statusElement.textContent = 'Activo';
+        statusElement.style.background = '#28a745';
+        statusElement.style.color = '#fff';
+        lastUpdateElement.innerHTML = `<i class=\"fas fa-clock me-1\"></i> Última actualización: ${data.ultima_actualizacion ? new Date(data.ultima_actualizacion).toLocaleString('es-ES') : '-'}`;
+      } else if (data.estado === 'desconectado') {
+        statusElement.textContent = 'Desconectado';
+        statusElement.style.background = '#dc3545';
+        statusElement.style.color = '#fff';
+        lastUpdateElement.innerHTML = `<i class=\"fas fa-clock me-1\"></i> Última actualización: ${data.ultima_actualizacion ? new Date(data.ultima_actualizacion).toLocaleString('es-ES') : '-'}`;
+      } else {
+        statusElement.textContent = 'Sin datos';
+        statusElement.style.background = '#6c757d';
+        statusElement.style.color = '#fff';
+        lastUpdateElement.innerHTML = `<i class=\"fas fa-clock me-1\"></i> Última actualización: Sin datos`;
+      }
+      // Mini-vista previa: solo un valor, duplicar el punto
+      let serie = [];
+      if (data[mag.key] && data[mag.key].actual !== null && data[mag.key].timestamp) {
+        serie = [{x: new Date(data[mag.key].timestamp), y: data[mag.key].actual}];
+      }
+      if (serie.length === 1) {
+        const p = serie[0];
+        serie.push({x: new Date(new Date(p.x).getTime() + 1000), y: p.y});
+      }
+      if (serie.length > 0) {
+        const ctx = document.getElementById(mag.chart).getContext('2d');
+        new Chart(ctx, {
+          type: 'line',
+          data: {
+            labels: serie.map(p => p.x.toLocaleTimeString('es-ES')),
+            datasets: [{
+              data: serie.map(p => p.y),
+              borderColor: mag.color,
+              backgroundColor: mag.bg,
+              tension: 0.35,
+              fill: true,
+              pointRadius: 2
+            }]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { display: false } },
+            scales: {
+              y: { title: { display: true, text: mag.label }, grid: { color: getChartColors().grid }, ticks: { color: getChartColors().axis } },
+              x: { grid: { color: getChartColors().grid }, ticks: { color: getChartColors().axis } }
+            }
+          }
+        });
+        // Actual, máximo, mínimo
+        document.getElementById(mag.current).textContent = data[mag.key].actual !== null ? data[mag.key].actual.toFixed(2) : '-';
+        document.getElementById(mag.max).textContent = data[mag.key].max !== null ? data[mag.key].max.toFixed(2) : '-';
+        document.getElementById(mag.min).textContent = data[mag.key].min !== null ? data[mag.key].min.toFixed(2) : '-';
+      } else {
+        document.getElementById(mag.current).textContent = '-';
+        document.getElementById(mag.max).textContent = '-';
+        document.getElementById(mag.min).textContent = '-';
+      }
+    }
+  } catch (e) { /* fallback: no datos */ }
+});
 
 // ---------------------- JS de inicialización ----------------------
 document.addEventListener('DOMContentLoaded', () => {

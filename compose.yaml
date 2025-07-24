@@ -18,6 +18,7 @@ services:
       - PUERTO_MQTTS=${PUERTO_MQTTS}
       - MQTT_USR=${MQTT_USR}
       - MQTT_PASS=${MQTT_PASS}
+      - enertrackBotToken=${enertrackBotToken}
     ports:
       - "8006:8006"               # mapea el puerto 8001 al host para probar directamente si quieres
     restart: unless-stopped

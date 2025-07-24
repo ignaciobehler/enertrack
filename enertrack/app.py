@@ -9,7 +9,7 @@ igualmente.
 
 from flask import (
     Flask, render_template, request, redirect, url_for,
-    flash, session, jsonify
+    flash, session, jsonify, current_app
 )
 from flask_mysqldb import MySQL
 import os, logging
@@ -22,6 +22,11 @@ import threading
 import time
 import ssl
 import asyncio
+import re
+from apscheduler.schedulers.background import BackgroundScheduler
+from datetime import datetime, timedelta
+import pytz
+import requests as pyrequests
 
 # ───────────────────────────── Logging ───────────────────────────
 logging.basicConfig(
@@ -128,80 +133,59 @@ def get_global_kpis(esp_ids: list[str]):
         return {"volt": "-", "curr": "-", "ener": "-", "pf": "-", "freq": "-", "sin_datos": True, "nodos_estado": {}}
 
     if influx_client and influx_bucket:
-        # Consulta real (últimos 30 min) - usando filtro OR para múltiples esp_ids
-        # Crear filtro OR para múltiples esp_ids
         esp_filter = " or ".join([f'r["esp_id"] == "{esp_id}"' for esp_id in esp_ids])
-        
-        # Consulta: promedio por nodo y luego promedio global (solo nodos con datos)
-        flux = f'''
+        # --- A) POTENCIA MEDIA GLOBAL (energía total de consumo) ---
+        flux_consumo = f'''
             from(bucket: "{influx_bucket}")
               |> range(start: -30m)
               |> filter(fn: (r) => {esp_filter})
-              |> filter(fn: (r) => r["_measurement"] == "tension" or r["_measurement"] == "corriente" or r["_measurement"] == "consumo" or r["_measurement"] == "fp" or r["_measurement"] == "frecuencia")
-              |> filter(fn: (r) => r["_field"] == "valor")
-              |> group(columns: ["esp_id", "_measurement"])
-              |> mean()
+              |> filter(fn: (r) => r._measurement == "consumo" and r._field == "valor")
+              |> sum()
+        '''
+        # --- B) MEDIA DE MAGNITUDES INSTANTÁNEAS ---
+        flux_inst = f'''
+            from(bucket: "{influx_bucket}")
+              |> range(start: -30m)
+              |> filter(fn: (r) => {esp_filter})
+              |> filter(fn: (r) => r._measurement != "consumo" and r._field == "valor")
               |> group(columns: ["_measurement"])
               |> mean()
         '''
-        
-        logger.info(f"📊 Consultando KPIs globales para {len(esp_ids)} nodos: {esp_ids}")
-        logger.info(f"🔍 Query Flux: {flux}")
         try:
-            # Ejecutar consulta principal
-            tables = list(influx_client.query_api().query(flux))
-            logger.info(f"📋 Número de tablas KPI: {len(tables)}")
-            
-            result = {"tension": None, "corriente": None, "consumo": None, "fp": None, "frecuencia": None}
-            for i, table in enumerate(tables):
-                logger.info(f"📊 Tabla KPI {i}: {len(table.records)} registros")
-                for record in table.records:
-                    field = record.get_measurement()
-                    value = record.get_value()
-                    logger.info(f"  📝 KPI: measurement={field}, valor={value}")
-                    if field in result:
-                        result[field] = value
-            # Si todos los valores son None, no hay datos recientes
-            if all(v is None for v in result.values()):
-                result = {k: "-" for k in result}
-                result["sin_datos"] = True
-                logger.warning("⚠️ No hay datos recientes para ningún KPI")
-            else:
-                # Si algún valor es None, poner '-'
-                for k in result:
-                    if result[k] is None:
-                        result[k] = "-"
-                        logger.info(f"⚠️ KPI {k}: sin datos")
-                    else:
-                        logger.info(f"✅ KPI {k}: {result[k]}")
-                result["sin_datos"] = False
-            
-            logger.info(f"📈 Resultado KPI: {result}")
-            
-            # Mapear las claves para que coincidan con el template
+            # --- consumo total y potencia media global ---
+            energia_total_kwh = 0.0  # comienza en cero y acumula
+            for table in influx_client.query_api().query(flux_consumo):
+                for rec in table.records:
+                    v = rec.get_value()
+                    if v is not None:
+                        energia_total_kwh += float(v)   # suma cada nodo
+
+            potencia_media_kw = (energia_total_kwh / 0.5) if energia_total_kwh else None  # 30 min = 0,5 h
+            # --- medias instantáneas ---
+            kpi_inst = {"tension": "-", "corriente": "-", "fp": "-", "frecuencia": "-"}
+            for t in influx_client.query_api().query(flux_inst):
+                for rec in t.records:
+                    m = rec.values.get("_measurement")
+                    kpi_inst[m] = f"{rec.get_value():.2f}"
+            # --- empaquetar resultado ---
             kpis_formateados = {
-                "volt": f"{result['tension']:.1f}" if result['tension'] != "-" and result['tension'] is not None else "-",
-                "curr": f"{result['corriente']:.2f}" if result['corriente'] != "-" and result['corriente'] is not None else "-",
-                "ener": f"{result['consumo']:.2f}" if result['consumo'] != "-" and result['consumo'] is not None else "-",
-                "pf": f"{result['fp']:.2f}" if result['fp'] != "-" and result['fp'] is not None else "-",
-                "freq": f"{result['frecuencia']:.1f}" if result['frecuencia'] != "-" and result['frecuencia'] is not None else "-",
-                "sin_datos": result["sin_datos"]
+                "volt": kpi_inst["tension"],
+                "curr": kpi_inst["corriente"],
+                "pf":   kpi_inst["fp"],
+                "freq": kpi_inst["frecuencia"],
+                "ener": f"{energia_total_kwh:.2f}" if energia_total_kwh else "-",
+                "potencia_media_global_kw": f"{potencia_media_kw:.2f}" if potencia_media_kw else "-",
+                "sin_datos": energia_total_kwh is None,
             }
-            
-            logger.info(f"✅ KPIs formateados: {kpis_formateados}")
-            
             # Determinar estado de cada nodo
             nodos_estado = {}
             for esp_id in esp_ids:
                 estado = get_nodo_estado(esp_id)
                 nodos_estado[esp_id] = estado
-            
             kpis_formateados["nodos_estado"] = nodos_estado
             return kpis_formateados
         except Exception as e:
             logger.error("Error Influx: %s", e)
-
-    # Fallback: si no hay datos reales, no mostrar ningún valor numérico
     return {"volt": "-", "curr": "-", "ener": "-", "pf": "-", "freq": "-", "sin_datos": True, "nodos_estado": {}}
 
 
@@ -342,7 +326,7 @@ def login():
             primer_nodo = cur2.fetchone()
             if primer_nodo:
                 session["esp_id_seleccionado"] = primer_nodo["esp_id"]
-                start_device_worker(primer_nodo["esp_id"])
+                # start_device_worker(primer_nodo["esp_id"]) # Eliminado
             cur2.close()
             
             return redirect(url_for("index"))
@@ -413,7 +397,7 @@ def add_node():
 
     if not esp_id or not descripcion:
         flash("ESP‑ID y descripción son obligatorios", "warning")
-        return redirect(url_for("index"))
+        return redirect(url_for("mis_nodos"))
 
     cur = mysql.connection.cursor()
     try:
@@ -426,7 +410,7 @@ def add_node():
         
         if cur.fetchone():
             flash("Ya tienes un nodo registrado con ese ESP ID", "danger")
-            return redirect(url_for("index"))
+            return redirect(url_for("mis_nodos"))
         
         # Buscar si el nodo ya existe en la base de datos (puede estar registrado por otro usuario)
         cur.execute("SELECT nodo_id FROM Nodos WHERE esp_id=%s", (esp_id,))
@@ -444,25 +428,19 @@ def add_node():
                 (esp_id, descripcion),
             )
             nodo_id = cur.lastrowid
-        
-        # Vincular al usuario
+        # Vincular al usuario (sin umbral_consumo)
         cur.execute(
             """INSERT IGNORE INTO UsuariosNodos (usuario_id, nodo_id, ubicacion)
                     VALUES (%s,%s,%s)""",
             (uid, nodo_id, ubicacion or None),
         )
         mysql.connection.commit()
-        
-        # Iniciar worker para el nuevo nodo inmediatamente
-        start_device_worker(esp_id)
-        logger.info(f"✅ Worker iniciado para nuevo nodo: {esp_id}")
-        
         flash("Nodo agregado", "success")
     except Exception as e:
         mysql.connection.rollback()
         logger.error(e)
         flash("Error al agregar nodo", "danger")
-    return redirect(url_for("index"))
+    return redirect(url_for("mis_nodos"))
 
 
 # ───────────────────────────── API JSON ──────────────────────────
@@ -530,7 +508,11 @@ def mis_nodos():
     )
     nodos = cur.fetchall()
     kpis = get_global_kpis([n["esp_id"] for n in nodos])
-    return render_template("mis_nodos.html", nodos=nodos, kpis=kpis)
+    # Obtener si el usuario tiene Telegram vinculado
+    cur.execute("SELECT telegram_chat_id FROM Usuarios WHERE usuario_id=%s", (uid,))
+    row = cur.fetchone()
+    telegram_vinculado = bool(row and row['telegram_chat_id'])
+    return render_template("mis_nodos.html", nodos=nodos, kpis=kpis, telegram_vinculado=telegram_vinculado)
 
 
 @app.route("/consumo")
@@ -563,7 +545,7 @@ def remove_node(nodo_id):
         nodo = cur.fetchone()
         if not nodo:
             flash("Nodo no encontrado o sin acceso", "danger")
-            return redirect(url_for("index"))
+            return redirect(url_for("mis_nodos"))
         # Eliminar la relación usuario-nodo
         cur.execute(
             "DELETE FROM UsuariosNodos WHERE usuario_id=%s AND nodo_id=%s",
@@ -579,7 +561,7 @@ def remove_node(nodo_id):
         mysql.connection.rollback()
         logger.error(e)
         flash("Error al eliminar el nodo", "danger")
-    return redirect(url_for("index"))
+    return redirect(url_for("mis_nodos"))
 
 
 @app.route("/nodo/<int:nodo_id>/update", methods=["GET", "POST"])
@@ -593,83 +575,140 @@ def update_node(nodo_id):
     )
     nodo = cur.fetchone()
     if not nodo:
+        if request.headers.get('X-Requested-With') == 'XMLHttpRequest' or request.accept_mimetypes['application/json']:
+            return jsonify({'error': 'Nodo no encontrado o sin acceso'}), 404
         flash("Nodo no encontrado o sin acceso", "danger")
-        return redirect(url_for("index"))
+        return redirect(url_for("mis_nodos"))
     if request.method == "POST":
         nuevo_esp_id = request.form.get("esp_id", "").strip()
         descripcion = request.form.get("descripcion", "").strip()
         ubicacion = request.form.get("ubicacion", "").strip()
         if not nuevo_esp_id or not descripcion:
+            if request.headers.get('X-Requested-With') == 'XMLHttpRequest' or request.accept_mimetypes['application/json']:
+                return jsonify({'error': 'ESP ID y descripción son obligatorios'}), 400
             flash("ESP ID y descripción son obligatorios", "warning")
-            return redirect(url_for("index"))
+            return redirect(url_for("mis_nodos"))
         try:
-            # Verificar si el usuario actual ya tiene otro nodo con ese ESP ID
             cur.execute("""
                 SELECT 1 FROM Nodos N 
                 JOIN UsuariosNodos UN USING(nodo_id) 
                 WHERE UN.usuario_id=%s AND N.esp_id=%s AND N.nodo_id!=%s
             """, (uid, nuevo_esp_id, nodo_id))
-            
             if cur.fetchone():
+                if request.headers.get('X-Requested-With') == 'XMLHttpRequest' or request.accept_mimetypes['application/json']:
+                    return jsonify({'error': 'Ya tienes otro nodo registrado con ese ESP ID'}), 400
                 flash("Ya tienes otro nodo registrado con ese ESP ID", "danger")
-                return redirect(url_for("index"))
-            
+                return redirect(url_for("mis_nodos"))
             cur.execute("UPDATE Nodos SET esp_id=%s, descripcion=%s WHERE nodo_id=%s", (nuevo_esp_id, descripcion, nodo_id))
             cur.execute("UPDATE UsuariosNodos SET ubicacion=%s WHERE usuario_id=%s AND nodo_id=%s", (ubicacion or None, uid, nodo_id))
             mysql.connection.commit()
+            if request.headers.get('X-Requested-With') == 'XMLHttpRequest' or request.accept_mimetypes['application/json']:
+                return jsonify({'success': True}), 200
             flash("Nodo actualizado correctamente", "success")
         except Exception as e:
             mysql.connection.rollback()
             logger.error(e)
+            if request.headers.get('X-Requested-With') == 'XMLHttpRequest' or request.accept_mimetypes['application/json']:
+                return jsonify({'error': 'Error al actualizar nodo'}), 500
             flash("Error al actualizar nodo", "danger")
-        return redirect(url_for("index"))
-    return redirect(url_for("index"))
+        return redirect(url_for("mis_nodos"))
+    return redirect(url_for("mis_nodos"))
 
 
 @app.route("/api/nodo/<int:nodo_id>/latest")
 @require_login
 def api_nodo_latest(nodo_id):
-    """API para obtener las últimas lecturas de un nodo."""
+    logger.info(f"[DASHBOARDS] INICIO llamada a /api/nodo/{nodo_id}/latest para usuario {session.get('user_id')}")
     uid = session["user_id"]
     cur = mysql.connection.cursor()
-    # Verificar acceso al nodo
+    # Verificar acceso al nodo y obtener datos de configuración
     cur.execute(
-        "SELECT N.esp_id FROM Nodos N JOIN UsuariosNodos UN USING(nodo_id) WHERE UN.usuario_id=%s AND N.nodo_id=%s",
+        "SELECT N.esp_id, N.descripcion, UN.ubicacion FROM Nodos N JOIN UsuariosNodos UN USING(nodo_id) WHERE UN.usuario_id=%s AND N.nodo_id=%s",
         (uid, nodo_id),
     )
     nodo = cur.fetchone()
     if not nodo:
+        logger.error(f"[DASHBOARDS] Nodo {nodo_id} no encontrado para usuario {uid}")
         return jsonify({"error": "Nodo no encontrado"}), 404
     if not influx_client or not influx_bucket:
+        logger.error(f"[DASHBOARDS] InfluxDB no disponible para usuario {uid}, nodo {nodo_id}")
         return jsonify({"error": "InfluxDB no disponible"}), 503
     esp_id = nodo["esp_id"]
-    # Consultar las últimas lecturas de cada magnitud
     magnitudes = ["tension", "corriente", "consumo", "fp", "frecuencia"]
-    result = {"esp_id": esp_id}
+    result = {"esp_id": esp_id, "descripcion": nodo["descripcion"], "ubicacion": nodo["ubicacion"]}
     try:
+        from datetime import timedelta
         for mag in magnitudes:
+            logger.info(f"[DASHBOARDS] Consultando magnitud '{mag}' para nodo {esp_id} (usuario {uid}) en los últimos 30 minutos...")
             flux = f'''
                 from(bucket: "{influx_bucket}")
-                  |> range(start: -1h)
+                  |> range(start: -30m)
                   |> filter(fn: (r) => r["_measurement"] == "{mag}")
                   |> filter(fn: (r) => r["esp_id"] == "{esp_id}")
                   |> filter(fn: (r) => r["_field"] == "valor")
-                  |> last()
-                  |> yield(name: "last")
+                  |> sort(columns: ["_time"])
             '''
+            logger.info(f"[DASHBOARDS] Query Flux 30m para {mag}: {flux}")
             tables = list(influx_client.query_api().query(flux))
-            value = None
-            timestamp = None
+            valores = []
+            tiempos = []
             for table in tables:
                 for record in table.records:
-                    value = record.get_value()
-                    timestamp = record.get_time()
-            result[mag] = value
-            if timestamp:
-                result["timestamp"] = timestamp.isoformat()
+                    valor = record.get_value()
+                    utc_time = record.get_time()
+                    local_time = utc_time - timedelta(hours=3)
+                    valores.append(valor)
+                    tiempos.append(local_time)
+            logger.info(f"[DASHBOARDS] Magnitud '{mag}': {len(valores)} valores en 30m: {valores}")
+            # Si no hay datos en la última media hora, buscar el último dato en las últimas 24h
+            if not valores:
+                logger.info(f"[DASHBOARDS] Sin datos en 30m para '{mag}', buscando en 24h...")
+                flux_24h = f'''
+                    from(bucket: "{influx_bucket}")
+                      |> range(start: -24h)
+                      |> filter(fn: (r) => r["_measurement"] == "{mag}")
+                      |> filter(fn: (r) => r["esp_id"] == "{esp_id}")
+                      |> filter(fn: (r) => r["_field"] == "valor")
+                      |> sort(columns: ["_time"])
+                '''
+                logger.info(f"[DASHBOARDS] Query Flux 24h para {mag}: {flux_24h}")
+                tables_24h = list(influx_client.query_api().query(flux_24h))
+                for table in tables_24h:
+                    for record in table.records:
+                        valor = record.get_value()
+                        utc_time = record.get_time()
+                        local_time = utc_time - timedelta(hours=3)
+                        valores.append(valor)
+                        tiempos.append(local_time)
+                logger.info(f"[DASHBOARDS] Magnitud '{mag}': {len(valores)} valores en 24h: {valores}")
+            if valores:
+                actual = valores[-1]
+                timestamp = tiempos[-1].isoformat()
+                maximo = max(valores)
+                minimo = min(valores)
+                logger.info(f"[DASHBOARDS] Magnitud '{mag}' RESULTADO: actual={actual}, max={maximo}, min={minimo}, timestamp={timestamp}")
+                result[mag] = {
+                    "actual": actual,
+                    "max": maximo,
+                    "min": minimo,
+                    "timestamp": timestamp
+                }
+            else:
+                logger.warning(f"[DASHBOARDS] Magnitud '{mag}' SIN DATOS para nodo {esp_id}")
+                result[mag] = {
+                    "actual": None,
+                    "max": None,
+                    "min": None,
+                    "timestamp": None
+                }
+        # Añadir estado y última actualización
+        estado_info = get_nodo_estado(esp_id)
+        result["estado"] = estado_info["estado"]
+        result["ultima_actualizacion"] = estado_info["ultima_actualizacion"]
+        logger.info(f"[DASHBOARDS] FIN llamada a /api/nodo/{nodo_id}/latest → resultado: {result}")
         return jsonify(result)
     except Exception as e:
-        logger.error(f"Error consultando InfluxDB: {e}")
+        logger.error(f"[DASHBOARDS] Error consultando InfluxDB para nodo {esp_id}: {e}")
         return jsonify({"error": "Error consultando InfluxDB"}), 500
 
 @app.route("/api/nodo/<int:nodo_id>/magnitud/<magnitud>")
@@ -771,9 +810,20 @@ def api_nodo_magnitud(nodo_id, magnitud):
             "actual": valores[-1] if valores else None,
             "maximo": max(valores) if valores else None,
             "minimo": min(valores) if valores else None,
-            "promedio": sum(valores)/len(valores) if valores else None,
             "total": total
         }
+        # Solo para consumo: potencia_media_kw
+        if magnitud == "consumo" and valores:
+            try:
+                rango_min = int(request.args.get('rango', '60'))
+            except Exception:
+                rango_min = 60
+            duracion_horas = rango_min / 60
+            potencia_media_kw = total / duracion_horas if duracion_horas else None
+            estadisticas["potencia_media_kw"] = potencia_media_kw
+        # Para otras magnitudes, mantener promedio si existía
+        elif valores:
+            estadisticas["promedio"] = sum(valores)/len(valores)
         
         # Obtener la fecha real del último dato
         ultima_fecha = None
@@ -1086,16 +1136,28 @@ def api_consumo_global():
         unidad = "kWh"
         valores_validos = [v for v in valores if v is not None and v > 0]
         total = sum(valores_validos)
-        promedio = sum(valores_validos) / len(valores_validos) if valores_validos else 0
         maximo = max(valores_validos) if valores_validos else 0
         minimo = min(valores_validos) if valores_validos else 0
-        
         estadisticas = {
             "total": f"{total:.2f}" if valores else "-",
-            "promedio": f"{promedio:.2f}" if valores else "-",
             "maximo": f"{maximo:.2f}" if valores else "-",
             "minimo": f"{minimo:.2f}" if valores else "-"
         }
+        # Solo para consumo: potencia_media_kw
+        if valores_validos:
+            num_periodos = len(periodos_labels)  # horas, días, meses o años generados arriba
+            if periodo == 'hora':               # cada etiqueta representa 1 hora
+                duracion_horas = num_periodos
+            elif periodo == 'dia':              # cada etiqueta representa 1 día
+                duracion_horas = num_periodos * 24
+            elif periodo == 'mes':              # cada etiqueta representa 1 mes de 30 días aprox.
+                duracion_horas = num_periodos * 30 * 24
+            elif periodo == 'año':              # cada etiqueta representa 1 año de 365 días
+                duracion_horas = num_periodos * 365 * 24
+            else:
+                duracion_horas = num_periodos  # caso por defecto
+            potencia_media_kw = total / duracion_horas if duracion_horas else None
+            estadisticas["potencia_media_kw"] = f"{potencia_media_kw:.2f}" if potencia_media_kw is not None else "-"
         
         logger.info(f"📊 Consumo por periodos: {consumo_por_periodo}")
         logger.info(f"📊 Labels: {labels}")
@@ -1187,177 +1249,86 @@ def api_kpi_global():
         return jsonify({"error": "Error consultando InfluxDB"}), 500
 
 # =====================
-# WORKERS PARA MQTT → INFLUXDB
+# WORKER MQTT GLOBAL → INFLUXDB
 # =====================
 
-# Diccionario global para workers activos por dispositivo
-active_workers = {}
+def start_global_mqtt_worker():
+    """
+    Inicia un único worker global que se suscribe a enertrack/# y almacena todos los datos recibidos en InfluxDB.
+    """
+    import influxdb_client
+    from influxdb_client.client.write_api import SYNCHRONOUS
+    from aiomqtt import Client
+    import asyncio
 
-def start_device_worker(esp_id):
-    """
-    Inicia un worker (hilo) para un dispositivo si no existe ya.
-    El worker se suscribe a los tópicos enertrack/<esp_id>/tension, enertrack/<esp_id>/corriente, etc.
-    y guarda los datos recibidos en InfluxDB.
-    """
-    if esp_id in active_workers:
-        logger.info(f"Ya existe un worker activo para {esp_id}")
+    INFLUX_URL = os.getenv("INFLUX_URL", "http://localhost:8086")
+    INFLUX_TOKEN = os.getenv("INFLUX_TOKEN", "token")
+    INFLUX_ORG = os.getenv("INFLUX_ORG", "org")
+    INFLUX_BUCKET = os.getenv("INFLUX_BUCKET", "medidoresEnergia")
+
+    write_api = None
+    client_influx = None
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    try:
+        client_influx = influxdb_client.InfluxDBClient(
+            url=INFLUX_URL, token=INFLUX_TOKEN, org=INFLUX_ORG
+        )
+        write_api = client_influx.write_api(write_options=SYNCHRONOUS)
+        logger.info(f"✅ Conectado a InfluxDB: {INFLUX_URL}")
+    except Exception as e:
+        logger.error(f"❌ Error conectando a InfluxDB: {e}")
         return
 
-    def worker():
-        import time
-        import influxdb_client
-        from influxdb_client.client.write_api import SYNCHRONOUS
-        from aiomqtt import Client
-        import asyncio
-
-        # Configuración de InfluxDB (ajusta según tu entorno)
-        INFLUX_URL = os.getenv("INFLUX_URL", "http://localhost:8086")
-        INFLUX_TOKEN = os.getenv("INFLUX_TOKEN", "token")
-        INFLUX_ORG = os.getenv("INFLUX_ORG", "org")
-        INFLUX_BUCKET = os.getenv("INFLUX_BUCKET", "medidoresEnergia")
-
-        write_api = None
-        client_influx = None
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
+    async def mqtt_worker():
         try:
-            client_influx = influxdb_client.InfluxDBClient(
-                url=INFLUX_URL, token=INFLUX_TOKEN, org=INFLUX_ORG
-            )
-            write_api = client_influx.write_api(write_options=SYNCHRONOUS)
-            logger.info(f"✅ Conectado a InfluxDB: {INFLUX_URL}")
+            async with Client(
+                MQTT_DOMINIO,
+                port=MQTT_PORT,
+                username=MQTT_USER,
+                password=MQTT_PASS,
+                tls_context=ssl_context,
+            ) as mqtt:
+                await mqtt.subscribe("enertrack/#")
+                logger.info(f"Suscrito a tópico MQTT global: enertrack/#")
+                async for message in mqtt.messages:
+                    topic = str(message.topic)
+                    payload = message.payload.decode()
+                    # Extraer esp_id y magnitud del topic: enertrack/<esp_id>/<magnitud>
+                    m = re.match(r"enertrack/([^/]+)/([^/]+)", topic)
+                    if not m:
+                        logger.warning(f"Tópico no reconocido: {topic}")
+                        continue
+                    esp_id, mag = m.group(1), m.group(2)
+                    try:
+                        valor = float(payload)
+                    except ValueError:
+                        logger.warning(f"Payload inválido para {mag}: '{payload}' en {topic}")
+                        continue
+                    punto = influxdb_client.Point(mag).tag("esp_id", esp_id).field("valor", valor)
+                    try:
+                        write_api.write(bucket=INFLUX_BUCKET, org=INFLUX_ORG, record=punto)
+                        logger.info(f"✅ Dato guardado en InfluxDB: {topic}={payload}")
+                    except Exception as e:
+                        logger.error(f"❌ Error escribiendo en InfluxDB: {e}")
+                        logger.error(f"  Bucket: {INFLUX_BUCKET}, Org: {INFLUX_ORG}")
         except Exception as e:
-            logger.error(f"❌ Error conectando a InfluxDB: {e}")
-            return
-
-        async def mqtt_worker():
-            try:
-                async with Client(
-                    MQTT_DOMINIO,
-                    port=MQTT_PORT,
-                    username=MQTT_USER,
-                    password=MQTT_PASS,
-                    tls_context=ssl_context,
-                ) as mqtt:
-                    topics = [f"enertrack/{esp_id}/{mag}" for mag in MAGNITUDES]
-                    for t in topics:
-                        await mqtt.subscribe(t)
-                    logger.info(f"Suscrito a tópicos MQTT para {esp_id}: {topics}")
-                    async for message in mqtt.messages:
-                        topic = str(message.topic)
-                        payload = message.payload.decode()
-                        for mag in MAGNITUDES:
-                            if topic.endswith(f"/{mag}"):
-                                try:
-                                    valor = float(payload)
-                                except ValueError:
-                                    logger.warning(f"Payload inválido para {mag}: '{payload}' en {topic}")
-                                    continue
-                                punto = influxdb_client.Point(mag).tag("esp_id", esp_id).field("valor", valor)
-                                try:
-                                    write_api.write(bucket=INFLUX_BUCKET, org=INFLUX_ORG, record=punto)
-                                    logger.info(f"✅ Dato guardado en InfluxDB: {topic}={payload}")
-                                except Exception as e:
-                                    logger.error(f"❌ Error escribiendo en InfluxDB: {e}")
-                                    logger.error(f"  Bucket: {INFLUX_BUCKET}, Org: {INFLUX_ORG}")
-                                break
-            except Exception as e:
-                logger.error(f"Error en worker MQTT para {esp_id}: {e}")
-            finally:
-                if client_influx:
-                    client_influx.close()
-
-        try:
-            loop.run_until_complete(mqtt_worker())
-        except Exception as e:
-            logger.error(f"Worker MQTT finalizó con error: {e}")
+            logger.error(f"Error en worker MQTT global: {e}")
         finally:
             if client_influx:
                 client_influx.close()
-            active_workers.pop(esp_id, None)
-            logger.info(f"Worker para {esp_id} finalizado y removido de activos")
 
-    hilo = threading.Thread(target=worker, daemon=True)
-    active_workers[esp_id] = hilo
+    def run():
+        loop.run_until_complete(mqtt_worker())
+
+    hilo = threading.Thread(target=run, daemon=True)
     hilo.start()
-    logger.info(f"Worker iniciado para {esp_id}")
+    logger.info(f"Worker MQTT global iniciado")
 
-@app.route("/api/estado_dispositivo")
-@require_login
-def api_estado_dispositivo():
-    try:
-        esp_id = session.get('esp_id_seleccionado')
-        if not esp_id:
-            return jsonify({"conectado": False, "error": "No hay dispositivo seleccionado"}), 400
-        
-        # Verificar si el worker está activo
-        conectado = esp_id in active_workers and active_workers[esp_id].is_alive()
-        
-        # Si no está activo, intentar reconectar
-        if not conectado:
-            start_device_worker(esp_id)
-            # Esperar un poco para que arranque el hilo
-            time.sleep(0.5)
-            conectado = esp_id in active_workers and active_workers[esp_id].is_alive()
-        
-        return jsonify({"conectado": conectado})
-    except Exception as e:
-        return jsonify({"conectado": False, "error": str(e)}), 500
+# Iniciar el worker global al arrancar la aplicación
+start_global_mqtt_worker()
 
-# ──────────────────────────────────────────────────────────────────
-
-def start_all_workers():
-    """Inicia workers para todos los nodos existentes en la base de datos."""
-    if not all([MQTT_DOMINIO, MQTT_USER, MQTT_PASS]):
-        logger.warning("⚠️ No se pueden iniciar workers MQTT - configuración incompleta")
-        return
-    
-    try:
-        cur = mysql.connection.cursor()
-        cur.execute("SELECT DISTINCT esp_id FROM Nodos")
-        nodos = cur.fetchall()
-        cur.close()
-        
-        logger.info(f"🚀 Iniciando workers para {len(nodos)} nodos existentes")
-        for nodo in nodos:
-            esp_id = nodo["esp_id"]
-            if esp_id not in active_workers:
-                start_device_worker(esp_id)
-                logger.info(f"  ✅ Worker iniciado para {esp_id}")
-            else:
-                # Verificar si el worker está vivo, si no, reiniciarlo
-                if not active_workers[esp_id].is_alive():
-                    logger.warning(f"  ⚠️ Worker muerto para {esp_id}, reiniciando...")
-                    active_workers.pop(esp_id, None)
-                    start_device_worker(esp_id)
-                    logger.info(f"  ✅ Worker reiniciado para {esp_id}")
-                else:
-                    logger.info(f"  ⏭️ Worker ya activo para {esp_id}")
-    except Exception as e:
-        logger.error(f"❌ Error iniciando workers: {e}")
-
-def check_and_restart_workers():
-    """Verifica y reinicia workers que hayan fallado"""
-    try:
-        cur = mysql.connection.cursor()
-        cur.execute("SELECT DISTINCT esp_id FROM Nodos")
-        nodos = cur.fetchall()
-        cur.close()
-        
-        for nodo in nodos:
-            esp_id = nodo["esp_id"]
-            if esp_id in active_workers:
-                if not active_workers[esp_id].is_alive():
-                    logger.warning(f"🔄 Worker muerto detectado para {esp_id}, reiniciando...")
-                    active_workers.pop(esp_id, None)
-                    start_device_worker(esp_id)
-            else:
-                logger.info(f"🔄 Worker faltante para {esp_id}, iniciando...")
-                start_device_worker(esp_id)
-    except Exception as e:
-        logger.error(f"❌ Error verificando workers: {e}")
-
-# ──────────────────────────────────────────────────────────────────
+# Eliminar funciones y lógica de workers por nodo y active_workers
 
 # Iniciar workers para todos los nodos al arrancar la aplicación
 # Esto se ejecuta independientemente de cómo se inicie la app (directo o con Gunicorn)
@@ -1366,7 +1337,8 @@ def initialize_workers():
     logger.info("🚀 Inicializando workers MQTT al arrancar la aplicación...")
     def run_with_context():
         with app.app_context():
-            start_all_workers()
+            # start_all_workers() # Eliminado
+            pass # No hay workers por nodo para iniciar
     init_thread = threading.Thread(target=run_with_context, daemon=True)
     init_thread.start()
     logger.info("✅ Hilo de inicialización de workers iniciado")
@@ -1381,7 +1353,7 @@ def start_worker_monitor():
         while True:
             try:
                 time.sleep(60)  # Verificar cada minuto
-                check_and_restart_workers()
+                # check_and_restart_workers() # Eliminado
             except Exception as e:
                 logger.error(f"❌ Error en monitor de workers: {e}")
     
@@ -1392,7 +1364,245 @@ def start_worker_monitor():
 # Iniciar monitor de workers
 start_worker_monitor()
 
+# --- INICIO INTEGRACIÓN TELEGRAM ---
+import secrets
+from flask import jsonify, request
+from telegram_bot import start_bot_in_thread, pending_links
 
+# Arrancar el bot de Telegram en un hilo al iniciar la app
+start_bot_in_thread()
+
+@app.route('/api/telegram/generate_link_code', methods=['POST'])
+@require_login
+def generate_telegram_link_code():
+    try:
+        usuario_id = session['user_id']
+        cur = mysql.connection.cursor()
+        cur.execute("SELECT telegram_chat_id FROM Usuarios WHERE usuario_id = %s", (usuario_id,))
+        row = cur.fetchone()
+        if row and row['telegram_chat_id']:
+            return jsonify({'error': 'Tu cuenta ya está vinculada con Telegram.'}), 400
+        logger.info(f"[TELEGRAM] Generando código de vinculación para usuario_id={usuario_id}")
+        # Generar código único de 8 caracteres
+        code = secrets.token_urlsafe(6)
+        logger.info(f"[TELEGRAM] Código generado: {code}")
+        # Guardar en el diccionario temporal (en producción, usar DB o caché persistente)
+        pending_links[code] = usuario_id
+        logger.info(f"[TELEGRAM] pending_links actualizado: {pending_links}")
+        # Username real del bot
+        bot_username = 'enerTrackBot'
+        telegram_link = f'https://t.me/{bot_username}?start={code}'
+        logger.info(f"[TELEGRAM] Enlace generado: {telegram_link}")
+        return jsonify({'code': code, 'telegram_link': telegram_link})
+    except Exception as e:
+        logger.error(f"[TELEGRAM] Error generando código de vinculación: {e}")
+        return jsonify({'error': 'Error generando código de vinculación'}), 500
+
+@app.route('/api/telegram/vincular', methods=['POST'])
+def telegram_vincular():
+    try:
+        data = request.get_json()
+        code = data.get('code')
+        chat_id = data.get('chat_id')
+        if not code or not chat_id:
+            return jsonify({'error': 'Faltan parámetros'}), 400
+        from telegram_bot import pending_links
+        usuario_id = pending_links.get(code)
+        if not usuario_id:
+            return jsonify({'error': 'El código de vinculación es inválido o ha expirado.'}), 400
+        cur = mysql.connection.cursor()
+        cur.execute("SELECT telegram_chat_id FROM Usuarios WHERE usuario_id = %s", (usuario_id,))
+        row = cur.fetchone()
+        if row and row['telegram_chat_id']:
+            return jsonify({'error': 'Tu cuenta ya está vinculada con Telegram.'}), 400
+        cur.execute("UPDATE Usuarios SET telegram_chat_id = %s WHERE usuario_id = %s", (chat_id, usuario_id))
+        mysql.connection.commit()
+        del pending_links[code]
+        return jsonify({'success': True}), 200
+    except Exception as e:
+        mysql.connection.rollback()
+        logger.error(f"Error al guardar chat_id: {e}")
+        return jsonify({'error': 'Ocurrió un error al vincular tu cuenta.'}), 500
+
+def send_telegram_alert(chat_id, message):
+    try:
+        token = os.environ.get('enertrackBotToken')
+        url = f'https://api.telegram.org/bot{token}/sendMessage'
+        data = {'chat_id': chat_id, 'text': message}
+        resp = pyrequests.post(url, data=data, timeout=10)
+        if resp.status_code != 200:
+            logger.error(f"[TELEGRAM] Error enviando alerta: {resp.text}")
+    except Exception as e:
+        logger.error(f"[TELEGRAM] Excepción enviando alerta: {e}")
+
+
+def job_alertas_consumo():
+    logger.info('[ALERTAS] Ejecutando job de alertas de consumo...')
+    with app.app_context():
+        try:
+            cur = mysql.connection.cursor()
+            cur.execute("""
+                SELECT U.nodo_id, U.umbral_kw, U.estado_alerta, U.ultima_alerta, N.esp_id, N.descripcion, UN.usuario_id, USU.telegram_chat_id
+                FROM UmbralesNodo U
+                JOIN Nodos N ON U.nodo_id = N.nodo_id
+                JOIN UsuariosNodos UN ON UN.nodo_id = N.nodo_id
+                JOIN Usuarios USU ON USU.usuario_id = UN.usuario_id
+                WHERE U.umbral_kw IS NOT NULL AND USU.telegram_chat_id IS NOT NULL
+            """)
+            umbrales = cur.fetchall()
+            for u in umbrales:
+                nodo_id = u['nodo_id']
+                umbral_kw = float(u['umbral_kw'])
+                estado_alerta = u['estado_alerta']
+                ultima_alerta = u['ultima_alerta']
+                esp_id = u['esp_id']
+                descripcion = u['descripcion']
+                usuario_id = u['usuario_id']
+                chat_id = u['telegram_chat_id']
+                now = datetime.now(pytz.UTC)
+                try:
+                    if not influx_client or not influx_bucket:
+                        logger.warning('[ALERTAS] InfluxDB no disponible, omitiendo nodo %s', esp_id)
+                        continue
+                    # Ventana fija de 15 minutos, sumando incrementos cada 2 minutos
+                    flux = f'''
+                        from(bucket: "{influx_bucket}")
+                          |> range(start: -15m)
+                          |> filter(fn: (r) => r._measurement == "consumo" and r.esp_id == "{esp_id}")
+                          |> filter(fn: (r) => r._field == "valor")
+                          |> aggregateWindow(every: 2m, fn: sum)
+                          |> yield(name: "sum")
+                    '''
+                    result = influx_client.query_api().query(flux)
+                    datos = []
+                    total_registros = sum(1 for table in result for _ in table.records)
+                    # Reiniciar el iterador porque ya lo recorrimos
+                    result = influx_client.query_api().query(flux)
+                    for table in result:
+                        for record in table.records:
+                            v = record.get_value()
+                            if v is not None:
+                                datos.append(float(v))
+                    logger.info(f"[ALERTAS] Nodo {esp_id}: {len(datos)}/{total_registros} registros con valor numérico")
+                    if not datos:
+                        logger.warning(f"[ALERTAS] Sin datos válidos para nodo {esp_id} en la ventana. Se omite.")
+                        continue
+                    consumo_ventana_kwh = sum(datos)  # solo números; no lanzará TypeError
+                    potencia_media_kw = consumo_ventana_kwh / 0.25  # 15 min = 0,25 h
+                    logger.info(f"[ALERTAS] Nodo {esp_id}: potencia_media={potencia_media_kw:.3f} kW (umbral={umbral_kw} kW)")
+                    # Histeresis
+                    if potencia_media_kw >= umbral_kw and estado_alerta == 0:
+                        hora = now.astimezone(pytz.timezone('America/Argentina/Buenos_Aires')).strftime('%H:%M')
+                        mensaje_alerta = (
+                            f"⚠️ Potencia media de los últimos 15\u202Fminutos: "
+                            f"{potencia_media_kw:.2f}\u202FkW (límite {umbral_kw:.2f}\u202FkW)\n"
+                            f"• Nodo: {descripcion or 'Sin descripción'} (ESP {esp_id})"
+                        )
+                        send_telegram_alert(chat_id, mensaje_alerta)
+                        cur2 = mysql.connection.cursor()
+                        cur2.execute("UPDATE UmbralesNodo SET estado_alerta=1, ultima_alerta=NOW() WHERE nodo_id=%s AND usuario_id=%s", (nodo_id, usuario_id))
+                        mysql.connection.commit()
+                        logger.info(f"[ALERTAS] Alerta enviada a usuario {usuario_id} para nodo {esp_id}")
+                    elif potencia_media_kw < 0.8 * umbral_kw and estado_alerta == 1:
+                        cur2 = mysql.connection.cursor()
+                        cur2.execute("UPDATE UmbralesNodo SET estado_alerta=0 WHERE nodo_id=%s AND usuario_id=%s", (nodo_id, usuario_id))
+                        mysql.connection.commit()
+                        logger.info(f"[ALERTAS] Rearme de alerta para nodo {esp_id}")
+                except Exception as e:
+                    logger.error(f"[ALERTAS] Excepción procesando nodo {esp_id}: {e}")
+        except Exception as e:
+            logger.error(f"[ALERTAS] Excepción general en job de alertas: {e}")
+
+# Iniciar el scheduler al arrancar la app
+scheduler = BackgroundScheduler()
+scheduler.add_job(job_alertas_consumo, 'interval', minutes=5, next_run_time=datetime.now()+timedelta(seconds=10))
+scheduler.start()
+logger.info('[ALERTAS] Scheduler de alertas iniciado')
+# --- FIN INTEGRACIÓN TELEGRAM ---
+
+@app.route('/enertrack/api/umbral/<int:nodo_id>', methods=['GET'])
+@require_login
+def get_umbral_nodo(nodo_id):
+    uid = session['user_id']
+    cur = mysql.connection.cursor()
+    try:
+        logger.info(f"[UMBRAL][GET] Usuario {uid} consulta umbral de nodo {nodo_id}")
+        cur.execute("SELECT umbral_kw FROM UmbralesNodo WHERE nodo_id=%s AND usuario_id=%s", (nodo_id, uid))
+        row = cur.fetchone()
+        if row:
+            logger.info(f"[UMBRAL][GET] Respuesta: umbral_kw={row['umbral_kw']}")
+            return jsonify({'umbral_kw': float(row['umbral_kw'])})
+        else:
+            logger.info(f"[UMBRAL][GET] Sin umbral definido para nodo {nodo_id} y usuario {uid}")
+            return jsonify({'umbral_kw': None})
+    except Exception as e:
+        logger.error(f"[UMBRAL][GET] Error: {e}")
+        return jsonify({'umbral_kw': None, 'error': str(e)}), 500
+
+@app.route('/enertrack/api/umbral/<int:nodo_id>', methods=['POST'], endpoint='set_umbral_nodo')
+@require_login
+def set_umbral_nodo(nodo_id):
+    uid = session['user_id']
+    try:
+        data = request.get_json()
+        logger.info(f"[UMBRAL][POST] Usuario {uid} setea umbral nodo {nodo_id}: {data}")
+        umbral_kw = float(data.get('umbral_kw'))
+        cur = mysql.connection.cursor()
+        cur.execute("SELECT 1 FROM UmbralesNodo WHERE nodo_id=%s AND usuario_id=%s", (nodo_id, uid))
+        if cur.fetchone():
+            cur.execute("UPDATE UmbralesNodo SET umbral_kw=%s WHERE nodo_id=%s AND usuario_id=%s", (umbral_kw, nodo_id, uid))
+        else:
+            cur.execute("INSERT INTO UmbralesNodo (nodo_id, usuario_id, umbral_kw) VALUES (%s, %s, %s)", (nodo_id, uid, umbral_kw))
+        mysql.connection.commit()
+        logger.info(f"[UMBRAL][POST] Umbral guardado para nodo {nodo_id} y usuario {uid}")
+        return jsonify({'success': True})
+    except Exception as e:
+        logger.error(f"[UMBRAL][POST] Error: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/enertrack/api/umbral/<int:nodo_id>', methods=['DELETE'])
+@require_login
+def delete_umbral_nodo(nodo_id):
+    uid = session['user_id']
+    try:
+        logger.info(f"[UMBRAL][DELETE] Usuario {uid} elimina umbral nodo {nodo_id}")
+        cur = mysql.connection.cursor()
+        cur.execute("DELETE FROM UmbralesNodo WHERE nodo_id=%s AND usuario_id=%s", (nodo_id, uid))
+        mysql.connection.commit()
+        logger.info(f"[UMBRAL][DELETE] Umbral eliminado para nodo {nodo_id} y usuario {uid}")
+        return jsonify({'success': True})
+    except Exception as e:
+        logger.error(f"[UMBRAL][DELETE] Error: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/perfil')
+@require_login
+def perfil():
+    uid = session['user_id']
+    cur = mysql.connection.cursor()
+    cur.execute("SELECT nombreUsuario, telegram_chat_id FROM Usuarios WHERE usuario_id=%s", (uid,))
+    row = cur.fetchone()
+    username = row['nombreUsuario'] if row else ''
+    telegram_vinculado = bool(row and row['telegram_chat_id'])
+    return render_template('perfil.html', username=username, telegram_vinculado=telegram_vinculado)
+
+@app.route('/api/telegram/unlink', methods=['POST'])
+@require_login
+def telegram_unlink():
+    try:
+        usuario_id = session['user_id']
+        cur = mysql.connection.cursor()
+        cur.execute("SELECT telegram_chat_id FROM Usuarios WHERE usuario_id = %s", (usuario_id,))
+        row = cur.fetchone()
+        if not row or not row['telegram_chat_id']:
+            return jsonify({'error': 'No tienes una cuenta de Telegram vinculada.'}), 400
+        cur.execute("UPDATE Usuarios SET telegram_chat_id = NULL WHERE usuario_id = %s", (usuario_id,))
+        mysql.connection.commit()
+        return jsonify({'success': True}), 200
+    except Exception as e:
+        mysql.connection.rollback()
+        logger.error(f"[TELEGRAM] Error desvinculando Telegram: {e}")
+        return jsonify({'error': 'Error al desvincular la cuenta de Telegram.'}), 500
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.getenv("PORT", 8006)), debug=True)

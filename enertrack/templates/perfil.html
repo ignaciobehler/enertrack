@@ -1,0 +1,110 @@
+{% extends "layout.html" %}
+{% block title %}Perfil de Usuario{% endblock %}
+{% block body %}
+<div class="container mt-4">
+  <div class="row justify-content-center">
+    <div class="col-md-7">
+      <div class="card shadow border-0">
+        <div class="card-body p-4">
+          <h2 class="mb-3 text-section"><i class="bi bi-person-circle me-2"></i> Perfil de Usuario</h2>
+          <div class="mb-4">
+            <strong>Usuario:</strong> <span class="text-primary">{{ username }}</span>
+          </div>
+          <hr>
+          <h5 class="mb-3"><i class="bi bi-telegram"></i> Vinculación con Telegram</h5>
+          {% if telegram_vinculado %}
+            <div class="alert alert-success d-flex align-items-center gap-2" role="alert">
+              <i class="bi bi-check-circle-fill text-success" style="font-size:1.5em;"></i>
+              <div>
+                Cuenta vinculada con Telegram
+              </div>
+            </div>
+            <div id="telegramUnlinkFeedback"></div>
+            <button class="btn btn-outline-danger" id="btnDesvincularTelegram" type="button">
+              <i class="bi bi-x-circle"></i> Desvincular Telegram
+            </button>
+          {% else %}
+            <div id="telegramFeedback"></div>
+            <button class="btn btn-info" id="btnVincularTelegram" type="button">
+              <i class="bi bi-telegram"></i> Vincular con Telegram
+            </button>
+            <div id="telegramCodeContainer" class="mt-3" style="display:none">
+              <a id="telegramLinkBtn" class="btn btn-success mb-2" href="#" target="_blank">
+                <i class="bi bi-telegram"></i> Ir al chat del bot
+              </a>
+              <div class="form-text ayuda-campo mt-2">Haz clic en el botón para abrir el chat del bot y pulsa "Iniciar" para completar la vinculación.</div>
+            </div>
+            <div class="form-text ayuda-campo mt-2">Recibirás alertas de sobreconsumo directamente en tu Telegram. Se abrirá el bot y la vinculación será automática.</div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+{% if not telegram_vinculado %}
+<script>
+const btnVincularTelegram = document.getElementById('btnVincularTelegram');
+const telegramFeedback = document.getElementById('telegramFeedback');
+const telegramCodeContainer = document.getElementById('telegramCodeContainer');
+const telegramLinkBtn = document.getElementById('telegramLinkBtn');
+if (btnVincularTelegram) {
+  btnVincularTelegram.addEventListener('click', function() {
+    btnVincularTelegram.disabled = true;
+    btnVincularTelegram.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Vinculando...';
+    fetch('/enertrack/api/telegram/generate_link_code', {method: 'POST'})
+      .then(r => r.json())
+      .then(data => {
+        if (data.error) {
+          telegramFeedback.innerHTML = '<div class="alert alert-danger">' + data.error + '</div>';
+          btnVincularTelegram.disabled = false;
+          btnVincularTelegram.innerHTML = '<i class="bi bi-telegram"></i> Vincular con Telegram';
+          telegramCodeContainer.style.display = 'none';
+        } else if (data.telegram_link) {
+          telegramFeedback.innerHTML = '';
+          telegramLinkBtn.href = data.telegram_link;
+          telegramCodeContainer.style.display = '';
+          btnVincularTelegram.disabled = false;
+          btnVincularTelegram.innerHTML = '<i class="bi bi-telegram"></i> Vincular con Telegram';
+        }
+      })
+      .catch(() => {
+        telegramFeedback.innerHTML = '<div class="alert alert-danger">No se pudo iniciar la vinculación. Intenta de nuevo.</div>';
+        btnVincularTelegram.disabled = false;
+        btnVincularTelegram.innerHTML = '<i class="bi bi-telegram"></i> Vincular con Telegram';
+        telegramCodeContainer.style.display = 'none';
+      });
+  });
+}
+</script>
+{% else %}
+<script>
+const btnDesvincularTelegram = document.getElementById('btnDesvincularTelegram');
+const telegramUnlinkFeedback = document.getElementById('telegramUnlinkFeedback');
+if (btnDesvincularTelegram) {
+  btnDesvincularTelegram.addEventListener('click', function() {
+    btnDesvincularTelegram.disabled = true;
+    btnDesvincularTelegram.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Desvinculando...';
+    fetch('/enertrack/api/telegram/unlink', {method: 'POST'})
+      .then(r => r.json())
+      .then(data => {
+        if (data.success) {
+          telegramUnlinkFeedback.innerHTML = '<div class="alert alert-success">Cuenta desvinculada correctamente. Recargando...</div>';
+          setTimeout(() => window.location.reload(), 1500);
+        } else {
+          telegramUnlinkFeedback.innerHTML = '<div class="alert alert-danger">' + (data.error || 'No se pudo desvincular la cuenta.') + '</div>';
+          btnDesvincularTelegram.disabled = false;
+          btnDesvincularTelegram.innerHTML = '<i class="bi bi-x-circle"></i> Desvincular Telegram';
+        }
+      })
+      .catch(() => {
+        telegramUnlinkFeedback.innerHTML = '<div class="alert alert-danger">No se pudo desvincular la cuenta. Intenta de nuevo.</div>';
+        btnDesvincularTelegram.disabled = false;
+        btnDesvincularTelegram.innerHTML = '<i class="bi bi-x-circle"></i> Desvincular Telegram';
+      });
+  });
+}
+</script>
+{% endif %}
+{% endblock %} 

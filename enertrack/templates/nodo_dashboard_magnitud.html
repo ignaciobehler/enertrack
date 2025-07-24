@@ -120,7 +120,7 @@
                                 </div>
                                 <div class="metric-content">
                                     <div class="metric-value dashboard-text" id="valorProm">-</div>
-                                    <div class="metric-label dashboard-text-muted">Promedio</div>
+                                    <div class="metric-label dashboard-text-muted">Potencia media (kW)</div>
                                 </div>
                             </div>
                         </div>
@@ -517,10 +517,16 @@ function renderMetrics(estadisticas) {
     if (document.getElementById('valorTotal')) {
         document.getElementById('valorTotal').textContent = (estadisticas.total !== undefined && estadisticas.total !== null) ? estadisticas.total.toFixed(2) : '-';
     }
-  document.getElementById('valorActual').textContent = estadisticas.actual ? estadisticas.actual.toFixed(2) : '-';
-  document.getElementById('valorMax').textContent = estadisticas.maximo ? estadisticas.maximo.toFixed(2) : '-';
-  document.getElementById('valorMin').textContent = estadisticas.minimo ? estadisticas.minimo.toFixed(2) : '-';
-  document.getElementById('valorProm').textContent = estadisticas.promedio ? estadisticas.promedio.toFixed(2) : '-';
+    document.getElementById('valorActual').textContent = estadisticas.actual ? estadisticas.actual.toFixed(2) : '-';
+    document.getElementById('valorMax').textContent = estadisticas.maximo ? estadisticas.maximo.toFixed(2) : '-';
+    document.getElementById('valorMin').textContent = estadisticas.minimo ? estadisticas.minimo.toFixed(2) : '-';
+    if (magnitud === 'consumo') {
+        document.getElementById('valorProm').textContent = (estadisticas.potencia_media_kw !== undefined && estadisticas.potencia_media_kw !== null)
+            ? (typeof estadisticas.potencia_media_kw === 'number' ? estadisticas.potencia_media_kw.toFixed(2) : estadisticas.potencia_media_kw)
+            : '-';
+    } else {
+        document.getElementById('valorProm').textContent = estadisticas.promedio ? estadisticas.promedio.toFixed(2) : '-';
+    }
 }
 
 function fetchAndRender(rango) {

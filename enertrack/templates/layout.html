@@ -45,7 +45,7 @@
           <button class="btn btn-outline-light" id="themeToggle" title="Alternar tema">
             <i class="bi bi-moon-stars"></i>
           </button>
-          <span class="navbar-text text-light">{{ session.get('username') }}</span>
+          <a class="navbar-text text-light text-decoration-underline" href="{{ url_for('perfil') }}" style="cursor:pointer;">{{ session.get('username') }}</a>
           <a href="{{ url_for('logout') }}" class="btn btn-outline-danger ms-2">
             <i class="bi bi-box-arrow-right"></i> Salir
           </a>

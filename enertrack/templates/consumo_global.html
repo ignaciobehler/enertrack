@@ -94,7 +94,7 @@
                             </div>
                             <div class="metric-content">
                                 <div class="metric-value dashboard-text" id="consumoPromedio">-</div>
-                                <div class="metric-label dashboard-text-muted">Promedio</div>
+                                <div class="metric-label dashboard-text-muted">Potencia media (kW)</div>
                             </div>
                         </div>
                     </div>
@@ -338,7 +338,9 @@ function renderTable(labels, valores, unidad, pagina = 1, porPagina = 20) {
 
 function updateMetrics(estadisticas) {
     document.getElementById('consumoTotal').textContent = estadisticas.total;
-    document.getElementById('consumoPromedio').textContent = estadisticas.promedio;
+    document.getElementById('consumoPromedio').textContent = (estadisticas.potencia_media_kw !== undefined && estadisticas.potencia_media_kw !== null)
+        ? (typeof estadisticas.potencia_media_kw === 'number' ? estadisticas.potencia_media_kw.toFixed(2) : estadisticas.potencia_media_kw)
+        : '-';
     document.getElementById('consumoMaximo').textContent = estadisticas.maximo;
     document.getElementById('consumoMinimo').textContent = estadisticas.minimo;
 }

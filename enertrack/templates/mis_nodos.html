@@ -126,6 +126,129 @@ body.dark-theme .nodo-cpu-icon {
 body.dark-theme .ayuda-campo {
     color: #fff;
 }
+
+/* Adaptar inputs, labels y modal al tema */
+input.form-control, textarea.form-control, select.form-control {
+    background-color: var(--color-bg);
+    color: var(--color-text);
+    border: 1px solid var(--color-border);
+    transition: background 0.3s, color 0.3s;
+}
+[data-theme='dark'] input.form-control,
+body.dark-theme input.form-control {
+    background-color: #23272f;
+    color: #fff;
+    border: 1px solid #444;
+}
+[data-theme='dark'] .modal-content,
+body.dark-theme .modal-content {
+    background-color: #23272f;
+    color: #fff;
+}
+.modal-content {
+    background-color: var(--color-card);
+    color: var(--color-text);
+}
+label.form-label {
+    color: var(--color-text);
+    font-weight: 500;
+}
+[data-theme='dark'] label.form-label,
+body.dark-theme label.form-label {
+    color: #fff;
+}
+::placeholder {
+    color: #888 !important;
+    opacity: 1;
+}
+[data-theme='dark'] ::placeholder {
+    color: #bbb !important;
+}
+
+/* Forzar contraste y legibilidad en el modal de edición */
+#editNodoModal .modal-content {
+    background-color: var(--color-card) !important;
+    color: var(--color-text) !important;
+}
+[data-theme='dark'] #editNodoModal .modal-content,
+body.dark-theme #editNodoModal .modal-content {
+    background-color: #23272f !important;
+    color: #fff !important;
+}
+#editNodoModal label.form-label {
+    color: var(--color-text) !important;
+}
+[data-theme='dark'] #editNodoModal label.form-label,
+body.dark-theme #editNodoModal label.form-label {
+    color: #fff !important;
+}
+#editNodoModal input.form-control, #editNodoModal textarea.form-control, #editNodoModal select.form-control {
+    background-color: var(--color-bg) !important;
+    color: var(--color-text) !important;
+    border: 1px solid var(--color-border) !important;
+}
+[data-theme='dark'] #editNodoModal input.form-control,
+body.dark-theme #editNodoModal input.form-control {
+    background-color: #23272f !important;
+    color: #fff !important;
+    border: 1px solid #444 !important;
+}
+#editNodoModal ::placeholder {
+    color: #888 !important;
+    opacity: 1;
+}
+[data-theme='dark'] #editNodoModal ::placeholder {
+    color: #bbb !important;
+}
+
+/* Modal edición: tema claro */
+#editNodoModal .modal-content {
+    background: #fff !important;
+    color: #212529 !important;
+}
+#editNodoModal label.form-label,
+#editNodoModal .form-label,
+#editNodoModal .modal-title {
+    color: #212529 !important;
+}
+#editNodoModal input.form-control, #editNodoModal textarea.form-control, #editNodoModal select.form-control {
+    background: #fff !important;
+    color: #212529 !important;
+    border: 1px solid #ced4da !important;
+}
+#editNodoModal ::placeholder {
+    color: #888 !important;
+    opacity: 1;
+}
+
+/* Modal edición: tema oscuro */
+[data-theme='dark'] #editNodoModal .modal-content,
+body.dark-theme #editNodoModal .modal-content {
+    background: #23272f !important;
+    color: #fff !important;
+}
+[data-theme='dark'] #editNodoModal label.form-label,
+[data-theme='dark'] #editNodoModal .form-label,
+[data-theme='dark'] #editNodoModal .modal-title,
+body.dark-theme #editNodoModal label.form-label,
+body.dark-theme #editNodoModal .form-label,
+body.dark-theme #editNodoModal .modal-title {
+    color: #fff !important;
+}
+[data-theme='dark'] #editNodoModal input.form-control,
+[data-theme='dark'] #editNodoModal textarea.form-control,
+[data-theme='dark'] #editNodoModal select.form-control,
+body.dark-theme #editNodoModal input.form-control,
+body.dark-theme #editNodoModal textarea.form-control,
+body.dark-theme #editNodoModal select.form-control {
+    background: #23272f !important;
+    color: #fff !important;
+    border: 1px solid #444 !important;
+}
+[data-theme='dark'] #editNodoModal ::placeholder,
+body.dark-theme #editNodoModal ::placeholder {
+    color: #bbb !important;
+}
 </style>
 {% endblock %}
 
@@ -188,6 +311,7 @@ body.dark-theme .ayuda-campo {
                                            placeholder="ej: Sala principal, planta baja" maxlength="100">
                                     <div class="form-text ayuda-campo">Ubicación física del medidor (opcional)</div>
                                 </div>
+                                <!-- Eliminado campo umbral_consumo -->
                             </div>
                             <div class="mt-3">
                                 <button type="submit" class="btn btn-primary">
@@ -239,6 +363,7 @@ body.dark-theme .ayuda-campo {
             {% if nodos %}
                 <div class="row">
                     {% for n in nodos %}
+                    {% set api_umbral_url = url_for('set_umbral_nodo', nodo_id=n.nodo_id) %}
                     <div class="col-md-6 col-lg-4">
                         <div class="nodo-card p-0" style="overflow: hidden;">
                             <!-- Encabezado visual -->
@@ -289,6 +414,47 @@ body.dark-theme .ayuda-campo {
                                             <span>{{ n.ubicacion or '—' }}</span>
                                         </div>
                                     </div>
+                                    <!-- Eliminado campo visualización umbral_consumo -->
+                                </div>
+                            </div>
+                            <!-- Resumen y control de umbral/ventana -->
+                            <div class="d-flex align-items-center gap-2 mb-2">
+                                <span class="badge bg-info text-dark" id="umbralResumen-{{ n.nodo_id }}">
+                                    No configurado
+                                </span>
+                                <button class="btn btn-outline-info btn-sm" type="button" data-bs-toggle="collapse" data-bs-target="#umbralCollapse-{{ n.nodo_id }}" aria-expanded="false" aria-controls="umbralCollapse-{{ n.nodo_id }}" id="btnEditarUmbral-{{ n.nodo_id }}">
+                                    Editar umbral
+                                </button>
+                            </div>
+                            <div class="collapse" id="umbralCollapse-{{ n.nodo_id }}">
+                                <div class="card border-info mb-2">
+                                    <div class="card-header bg-info text-white p-2">
+                                        <i class="bi bi-exclamation-triangle me-2"></i> Umbral de Consumo y Alerta Telegram
+                                    </div>
+                                    <div class="card-body p-2">
+                                        <form class="umbralForm row g-2" data-nodo-id="{{ n.nodo_id }}" data-api-url="{{ url_for('set_umbral_nodo', nodo_id=n.nodo_id) }}">
+                                            <div class="col-12">
+                                            {% if not telegram_vinculado %}
+                                                <div class="alert alert-warning mb-2">Debes <a href="{{ url_for('perfil') }}">vincular tu cuenta de Telegram</a> para poder configurar umbrales de alerta.</div>
+                                            {% endif %}
+                                            </div>
+                                            <div class="col-12">
+                                                <label class="form-label mb-1">Potencia límite (kW)</label>
+                                                <input type="number" step="0.01" min="0" class="form-control form-control-sm umbral_kw" required placeholder="Ej: 2.5" {% if not telegram_vinculado %}disabled{% endif %}>
+                                                <div class="form-text text-muted small">Se enviará una alerta si la demanda media en los últimos 15 minutos supera el valor configurado.</div>
+                                            </div>
+                                            <div class="col-4">
+                                                <button type="submit" class="btn btn-success btn-sm w-100 btnGuardarUmbral" {% if not telegram_vinculado %}disabled{% endif %}>Guardar</button>
+                                            </div>
+                                            <div class="col-4">
+                                                <button type="button" class="btn btn-outline-danger btn-sm w-100 btnEliminarUmbral" style="display:none;" {% if not telegram_vinculado %}disabled{% endif %}>Eliminar umbral</button>
+                                            </div>
+                                            <div class="col-4">
+                                                <button type="button" class="btn btn-secondary btn-sm w-100 btnCancelarUmbral" {% if not telegram_vinculado %}disabled{% endif %}>Cancelar</button>
+                                            </div>
+                                        </form>
+                                        <div class="umbralFeedback mt-2"></div>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -314,25 +480,26 @@ body.dark-theme .ayuda-campo {
 <!-- Modal para editar nodo -->
 <div class="modal fade" id="editNodoModal" tabindex="-1">
     <div class="modal-dialog">
-        <div class="modal-content">
+        <div class="modal-content" id="editNodoModalContent">
             <div class="modal-header">
-                <h5 class="modal-title">Editar Nodo</h5>
+                <h5 class="modal-title" id="editNodoModalTitle">Editar Nodo</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <form id="editNodoForm" method="POST">
                 <div class="modal-body">
                     <div class="mb-3">
-                        <label for="edit_esp_id" class="form-label">ESP ID *</label>
-                        <input type="text" class="form-control" id="edit_esp_id" name="esp_id" required>
+                        <label for="edit_esp_id" class="form-label" id="label_esp_id">ESP ID *</label>
+                        <input type="text" class="form-control" id="edit_esp_id" name="esp_id" required placeholder="Ej: 24A3BC12" style="color:#212529; background:#fff;">
                     </div>
                     <div class="mb-3">
-                        <label for="edit_descripcion" class="form-label">Descripción *</label>
-                        <input type="text" class="form-control" id="edit_descripcion" name="descripcion" required>
+                        <label for="edit_descripcion" class="form-label" id="label_descripcion">Descripción *</label>
+                        <input type="text" class="form-control" id="edit_descripcion" name="descripcion" required placeholder="Ej: Medidor termotanque" style="color:#212529; background:#fff;">
                     </div>
                     <div class="mb-3">
-                        <label for="edit_ubicacion" class="form-label">Ubicación</label>
-                        <input type="text" class="form-control" id="edit_ubicacion" name="ubicacion">
+                        <label for="edit_ubicacion" class="form-label" id="label_ubicacion">Ubicación</label>
+                        <input type="text" class="form-control" id="edit_ubicacion" name="ubicacion" placeholder="Ej: Baño" style="color:#212529; background:#fff;">
                     </div>
+                    <!-- Eliminado campo edición umbral_consumo -->
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
@@ -342,14 +509,85 @@ body.dark-theme .ayuda-campo {
         </div>
     </div>
 </div>
+
+<!-- Alerta global para feedback de edición -->
+<div id="globalEditAlert" style="display:none; position:fixed; top:20px; right:20px; z-index:2000; min-width:300px;"></div>
 {% endblock %}
 
 {% block scripts %}
 <script>
+function showGlobalEditAlert(msg, success=true) {
+    const alertDiv = document.getElementById('globalEditAlert');
+    alertDiv.className = 'alert alert-dismissible fade show ' + (success ? 'alert-success' : 'alert-danger');
+    alertDiv.innerHTML = msg + '<button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>';
+    alertDiv.style.display = 'block';
+    setTimeout(() => { alertDiv.style.display = 'none'; }, 3000);
+}
+
+function applyModalTheme() {
+    const isDark = document.body.classList.contains('dark-theme') || document.documentElement.getAttribute('data-theme') === 'dark';
+    const modalContent = document.getElementById('editNodoModalContent');
+    const labels = [
+        document.getElementById('label_esp_id'),
+        document.getElementById('label_descripcion'),
+        document.getElementById('label_ubicacion')
+    ];
+    const inputs = [
+        document.getElementById('edit_esp_id'),
+        document.getElementById('edit_descripcion'),
+        document.getElementById('edit_ubicacion')
+    ];
+    if (isDark) {
+        modalContent.classList.remove('bg-white', 'text-dark');
+        modalContent.classList.add('bg-dark', 'text-light');
+        labels.forEach(l => { if(l) { l.classList.remove('text-dark'); l.classList.add('text-light'); }});
+        inputs.forEach(i => { if(i) { i.classList.remove('bg-white','text-dark'); i.classList.add('bg-dark','text-light'); i.style.background='#23272f'; i.style.color='#fff'; }});
+    } else {
+        modalContent.classList.remove('bg-dark', 'text-light');
+        modalContent.classList.add('bg-white', 'text-dark');
+        labels.forEach(l => { if(l) { l.classList.remove('text-light'); l.classList.add('text-dark'); }});
+        inputs.forEach(i => { if(i) { i.classList.remove('bg-dark','text-light'); i.classList.add('bg-white','text-dark'); i.style.background='#fff'; i.style.color='#212529'; }});
+    }
+}
+
 function editNodo(nodoId) {
-    // Aquí podrías cargar los datos del nodo y mostrar el modal
-    // Por ahora, redirigir a la página de edición
-    window.location.href = `/enertrack/nodo/${nodoId}/update`;
+    fetch(`/enertrack/api/nodo/${nodoId}/latest`)
+        .then(r => r.json())
+        .then(data => {
+            document.getElementById('edit_esp_id').value = data.esp_id || '';
+            document.getElementById('edit_descripcion').value = data.descripcion || '';
+            document.getElementById('edit_ubicacion').value = data.ubicacion || '';
+            document.getElementById('editNodoForm').setAttribute('data-nodo-id', nodoId);
+            applyModalTheme();
+            var modal = new bootstrap.Modal(document.getElementById('editNodoModal'));
+            modal.show();
+        });
+}
+
+const editNodoForm = document.getElementById('editNodoForm');
+if (editNodoForm) {
+    editNodoForm.addEventListener('submit', function(e) {
+        e.preventDefault();
+        const nodoId = editNodoForm.getAttribute('data-nodo-id');
+        const formData = new FormData(editNodoForm);
+        fetch(`/enertrack/nodo/${nodoId}/update`, {
+            method: 'POST',
+            body: formData
+        })
+        .then(async r => {
+            let text = await r.text();
+            let data = {};
+            try { data = JSON.parse(text); } catch {}
+            if (r.ok && (!data.error)) {
+                const modal = bootstrap.Modal.getInstance(document.getElementById('editNodoModal'));
+                if (modal) modal.hide();
+                showGlobalEditAlert('Nodo editado correctamente.', true);
+                setTimeout(() => { window.location.reload(); }, 1500);
+            } else {
+                showGlobalEditAlert(data.error || 'Error al editar el nodo.', false);
+            }
+        });
+    });
 }
 
 function removeNodo(nodoId) {
@@ -376,5 +614,111 @@ setAyudaCampoColor();
 const observer = new MutationObserver(setAyudaCampoColor);
 observer.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
 observer.observe(document.body, { attributes: true, attributeFilter: ['class'] });
+
+// Elimina el bloque JS de vinculación con Telegram
+
+// --- Gestión AJAX de umbral de consumo para cada nodo en la lista ---
+// Asegurarse de que showGlobalEditAlert esté disponible en el scope global
+window.showGlobalEditAlert = showGlobalEditAlert;
+document.querySelectorAll('.umbralForm').forEach(form => {
+    const nodoId = form.getAttribute('data-nodo-id');
+    const apiUrl = form.getAttribute('data-api-url');
+    const umbralKwInput = form.querySelector('.umbral_kw');
+    const btnEliminarUmbral = form.querySelector('.btnEliminarUmbral');
+    const btnCancelarUmbral = form.querySelector('.btnCancelarUmbral');
+    const feedbackDiv = form.querySelector('.umbralFeedback');
+    const resumenSpan = document.getElementById('umbralResumen-' + nodoId);
+    const collapseDiv = document.getElementById('umbralCollapse-' + nodoId);
+    const btnEditar = document.getElementById('btnEditarUmbral-' + nodoId);
+
+    function actualizarResumen(data) {
+        if (data.umbral_kw) {
+            resumenSpan.textContent = `Potencia límite: ${data.umbral_kw} kW`;
+            btnEditar.textContent = 'Editar umbral';
+        } else {
+            resumenSpan.textContent = 'No configurado';
+            btnEditar.textContent = 'Configurar umbral';
+        }
+    }
+
+    function mostrarFeedback(msg, success=true) {
+        feedbackDiv.className = 'alert ' + (success ? 'alert-success' : 'alert-danger');
+        feedbackDiv.textContent = msg;
+        feedbackDiv.style.display = 'block';
+        setTimeout(() => { feedbackDiv.style.display = 'none'; }, 3500);
+    }
+
+    function cargarUmbral() {
+        fetch(apiUrl)
+            .then(r => r.json())
+            .then(data => {
+                if (data.umbral_kw) {
+                    umbralKwInput.value = data.umbral_kw;
+                    btnEliminarUmbral.style.display = '';
+                } else {
+                    umbralKwInput.value = '';
+                    btnEliminarUmbral.style.display = 'none';
+                }
+                actualizarResumen(data);
+            })
+            .catch(() => {
+                resumenSpan.textContent = 'No configurado';
+                btnEditar.textContent = 'Configurar umbral';
+            });
+    }
+
+    form.addEventListener('submit', function(e) {
+        e.preventDefault();
+        const umbral_kw = umbralKwInput.value;
+        fetch(apiUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ umbral_kw })
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) {
+                actualizarResumen({umbral_kw});
+                window.showGlobalEditAlert('Umbral editado con éxito.', true);
+                setTimeout(() => {
+                    const collapseInstance = bootstrap.Collapse.getOrCreateInstance(collapseDiv);
+                    collapseInstance.hide();
+                    feedbackDiv.style.display = 'none';
+                }, 400);
+            } else {
+                mostrarFeedback(data.error || 'Error al guardar el umbral.', false);
+            }
+        })
+        .catch(err => mostrarFeedback('Error de red al guardar el umbral.', false));
+    });
+
+    btnEliminarUmbral.addEventListener('click', function() {
+        if (!confirm('¿Eliminar el umbral de este nodo?')) return;
+        fetch(apiUrl, { method: 'DELETE' })
+            .then(r => r.json())
+            .then(data => {
+                if (data.success) {
+                    window.showGlobalEditAlert('Umbral eliminado con éxito.', true);
+                    cargarUmbral();
+                    setTimeout(() => {
+                        const collapseInstance = bootstrap.Collapse.getOrCreateInstance(collapseDiv);
+                        collapseInstance.hide();
+                        feedbackDiv.style.display = 'none';
+                    }, 400);
+                } else {
+                    mostrarFeedback(data.error || 'Error al eliminar el umbral.', false);
+                }
+            })
+            .catch(() => mostrarFeedback('Error de red al eliminar el umbral.', false));
+    });
+
+    btnCancelarUmbral.addEventListener('click', function() {
+        if (collapseDiv.classList.contains('show')) {
+            new bootstrap.Collapse(collapseDiv, {toggle: true}).hide();
+        }
+    });
+
+    cargarUmbral();
+});
 </script>
 {% endblock %} 

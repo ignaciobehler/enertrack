@@ -6,3 +6,8 @@ paho-mqtt
 influxdb-client
 aiomqtt
 certifi
+python-telegram-bot
+requests
+APScheduler
+pytz
+mysql-connector-python
