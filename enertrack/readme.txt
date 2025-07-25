@@ -45,7 +45,7 @@ EnerTrack incluye un bot de Telegram que permite a los usuarios recibir alertas 
 ## Estructura del proyecto
 
 ```	enertrack/
-├── app.py                 # Lógica principal y workers MQTT
+├── app.py                 # Lógica principal y worker MQTT
 ├── telegram_bot.py        # Lógica del bot de Telegram y vinculación
 ├── templates/             # Vistas HTML (Jinja2)
 ├── static/                # JS, CSS, imágenes
